@@ -1,0 +1,536 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "../protos/amr_robot.proto"
+
+WorldInfo {
+  basicTimeStep 20
+  contactProperties [
+    ContactProperties {
+      material1 "rubber"
+      coulombFriction [
+        2.5
+      ]
+    }
+    ContactProperties {
+      material1 "wheel_material"
+      material2 "default"
+      coulombFriction [
+        3.5
+        0.15
+      ]
+      frictionRotation 0.785398 0
+      softCFM 0.00001
+      softERP 0.8
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.1268185563323148 -0.10711006661573334 0.9861259997583274 4.53055055024891
+  position -0.6046319734145057 0.7792583251916774 0.5920566261045647
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+Solid {
+  translation 0.01 0 0
+  children [
+    Group {
+      children [
+        Solid {
+          translation -0.63 1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS2.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag2"
+        }
+        Solid {
+          translation -1.19 1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS22.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag22"
+        }
+        Solid {
+          translation -1.17 -1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS1.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag1"
+        }
+        Solid {
+          translation -0.64 -1.17 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS12.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag12"
+        }
+        Solid {
+          translation 0.33 1.16 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS3.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag3"
+        }
+        Solid {
+          translation -0.16 1.16 0.152
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+                texture ImageTexture {
+                  url [
+                    "AS32.jpg"
+                  ]
+                }
+              }
+              geometry Box {
+                size 0.15 0.01 0.15
+              }
+            }
+          ]
+          name "Tag32"
+        }
+        Solid {
+          translation 0.09 0.66 0.26
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.13 0.12 0.45
+              }
+            }
+          ]
+          name "wall10(2)"
+          boundingObject USE w10
+        }
+        Solid {
+          translation -0.92 0.69 0.27
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.1 0.15 0.45
+              }
+            }
+          ]
+          name "wall10(1)"
+          boundingObject USE w10
+        }
+        Solid {
+          translation -0.94 -0.66 0.27
+          children [
+            DEF w10 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.1 0.12 0.45
+              }
+            }
+          ]
+          name "wall10"
+          boundingObject USE w10
+        }
+        Solid {
+          translation 1.145 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.55 0.45
+              }
+            }
+          ]
+          name "wall9(4)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.104999 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.55 0.45
+              }
+            }
+          ]
+          name "wall9(3)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.934999 -1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.96 0.45
+              }
+            }
+          ]
+          name "wall9(2)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.905 1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 1.01 0.45
+              }
+            }
+          ]
+          name "wall9(1)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation 0.095 1.19 0.26
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.838 0.45
+              }
+            }
+          ]
+          name "wall9"
+          boundingObject USE w8
+        }
+        Solid {
+          translation 0.53 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(4)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.34 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(3)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.38 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(2)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -1.43 0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8(1)"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -0.44 -0.9 0.26
+          children [
+            DEF w8 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall8"
+          boundingObject USE w8
+        }
+        Solid {
+          translation -1.43 -0.9 0.27
+          children [
+            DEF w7 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall7"
+          boundingObject USE w7
+        }
+        Solid {
+          translation -0.4 -0.9 0.26
+          children [
+            DEF w6 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall6"
+          boundingObject USE w6
+        }
+        Solid {
+          translation 1.44 -0.9 0.26
+          children [
+            DEF w5 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 0.03 0.6 0.45
+              }
+            }
+          ]
+          name "wall5"
+          boundingObject USE w5
+        }
+        Solid {
+          translation 0 1.301 0.21
+          children [
+            DEF w2 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 3 0.1 0.5
+              }
+            }
+          ]
+          name "wall2"
+          boundingObject USE w2
+        }
+        Solid {
+          translation -1.54 -0.001 0.21
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w3 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 2.7 0.1 0.5
+              }
+            }
+          ]
+          name "wall3"
+          boundingObject USE w3
+        }
+        Solid {
+          translation 1.54 -0.011 0.21
+          rotation 0 0 1 -1.5707953071795862
+          children [
+            DEF w4 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 2.7 0.1 0.5
+              }
+            }
+          ]
+          name "wall4"
+          boundingObject USE w4
+        }
+        Solid {
+          translation 0 -1.301 0.21
+          children [
+            DEF w1 Shape {
+              appearance Appearance {
+                material Material {
+                  diffuseColor 0.964706 0.960784 0.956863
+                }
+              }
+              geometry Box {
+                size 3 0.1 0.5
+              }
+            }
+          ]
+          name "wall1"
+          boundingObject USE w1
+        }
+      ]
+    }
+    DEF floor Shape {
+      appearance Appearance {
+        material Material {
+        }
+        texture ImageTexture {
+          url [
+            "layout.png"
+          ]
+        }
+      }
+      geometry Box {
+        size 3 2.5 0.08
+      }
+    }
+  ]
+  name "Env"
+  boundingObject USE floor
+}
+amr_robot {
+  translation 1.270281734201219 0.37999999073660834 0.10396148333588119
+  rotation 0.002167225822822243 -6.837749153410628e-08 0.9999976515633565 3.1415899996885583
+  controller "<extern>"
+  controllerArgs [
+    ""
+  ]
+}

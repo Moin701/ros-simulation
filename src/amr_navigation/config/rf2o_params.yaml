@@ -1,0 +1,10 @@
+rf2o_laser_odometry:
+  ros__parameters:
+    laser_scan_topic: "/scan"
+    odom_topic: "/rf2o/odom"
+    publish_tf: true                # CRITICAL: RF2O will now publish odom -> base_link directly!
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    laser_frame_id: "laser_frame"
+    freq: 10.0                      # Match LiDAR update frequency
+    init_pose_from_topic: ""        # Disable ground truth pose dependency so initial pose initializes to 0 on boot

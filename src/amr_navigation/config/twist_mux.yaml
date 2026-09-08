@@ -1,0 +1,18 @@
+twist_mux:
+  ros__parameters:
+    topics:
+      # Teleop (keyboard / joystick) — highest priority
+      teleop:
+        topic: /cmd_vel_teleop
+        timeout: 0.1
+        priority: 30
+      # Lidar-reactive docking controller — medium priority
+      docking:
+        topic: /cmd_vel_dock
+        timeout: 0.1
+        priority: 20
+      # Nav2 autonomous navigation — lowest priority
+      navigation:
+        topic: /cmd_vel_nav
+        timeout: 0.1
+        priority: 10

@@ -1,0 +1,249 @@
+amcl:
+  ros__parameters:
+    use_sim_time: True
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+    base_frame_id: "base_link"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    scan_topic: "scan"
+    transform_tolerance: 1.5
+
+    # Mirrors amr_navigation/config/amcl.yaml exactly (Milestone 2) - the
+    # task that created this file only listed set_initial_pose/initial_pose
+    # here, which would have silently dropped robot_model_type and left AMCL
+    # back on the default DifferentialMotionModel (can't model mecanum
+    # strafing at all - see decisions-and-gotchas.md's AMCL section).
+    # These two files are a duplicated source of AMCL config by design (the
+    # standalone amcl.yaml + localization.launch.py stay as a lightweight
+    # map+AMCL-only entry point) - if AMCL tuning changes, update both.
+    set_initial_pose: true
+    initial_pose:
+      x: -0.030
+      y: 0.357
+      z: 0.0
+      yaw: -0.027
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+
+    min_particles: 500
+    max_particles: 2000
+    # Tightened for mecanum wheel slip in narrow doorways - a slipping
+    # wheel makes odometry-only prediction between updates unreliable, so
+    # correcting against the LiDAR scan more often (every 5cm/~3deg
+    # instead of 10cm/~4.6deg) limits how far dead reckoning can drift
+    # before the next correction.
+    update_min_d: 0.05
+    update_min_a: 0.05
+    resample_interval: 1
+    laser_model_type: "likelihood_field"
+    laser_min_range: 0.1
+    laser_max_range: 12.0
+    max_beams: 80                    # reduced from 180 to cut AMCL ray-casting CPU load during doorway traversal
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 20.0
+    use_sim_time: true
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.15
+      max_iterations: 1000000
+      max_on_obstacle_iterations: 1000
+      allow_unknown: true
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: true
+      smooth_path: false              # CRITICAL: Disables curving, forces straight lines!
+
+controller_server:
+  ros__parameters:
+    use_sim_time: True
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+    # Remap output to twist_mux navigation channel (lowest priority)
+    cmd_vel_topic: /cmd_vel_nav
+
+    # Plugin strings must be the exact pluginlib-registered name. nav2_controller's
+    # progress/goal checkers register only a `type=` (C++ namespace, "::"), not a
+    # `name=` alias - confirmed via nav2_controller's plugins.xml. The slash form
+    # ("nav2_controller/SimpleProgressChecker") does not exist and would fail to load.
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.01 # 1.0 cm minimum movement threshold
+      movement_time_allowance: 3.0   # If the robot moves less than 1cm in 3.0s, trigger recovery!
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15         # Relaxed to 15 cm to guarantee easy entry without inflation lock
+      yaw_goal_tolerance: 3.14        # 180 degrees (accepts ANY final orientation instantly!)
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      goal_checker_id: "general_goal_checker" # Explicitly bind to our 15cm plugin
+      xy_goal_tolerance: 0.15            # Overrides default planner checks
+      yaw_goal_tolerance: 3.14           # Overrides default planner checks
+      debug_trajectory_details: True
+      prune_plan: true
+      prune_distance: 1.0
+      min_vel_x: -0.5
+      max_vel_x: 0.5
+      min_vel_y: -0.5               # Enable Y velocity for mecanum strafe
+      max_vel_y: 0.5                # Enable Y velocity for mecanum strafe
+      min_vel_theta: 0.06
+      max_vel_theta: 0.45
+      min_speed_xy: 0.0
+      max_speed_xy: 0.5
+      min_speed_theta: 0.06
+      # Kinematic parameters for DWB (Holonomic / Mecanum setup)
+      acc_lim_x: 1.5
+      acc_lim_y: 1.5
+      acc_lim_theta: 1.2
+      decel_lim_x: -1.5
+      decel_lim_y: -1.5
+      decel_lim_theta: -1.2
+
+      # Trajectory generator and critics.
+      # vx_samples/vy_samples/vtheta_samples are the real dwb_plugins::
+      # StandardTrajectoryGenerator parameter names (confirmed via `strings`
+      # on libstandard_traj_generator.so - it declares exactly these three,
+      # not "vel_xs_samples" etc). The wrong names would have been silently
+      # ignored, leaving DWB on its default sample counts and never actually
+      # widening Y-velocity sampling for strafe paths.
+      trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
+      vx_samples: 8                # reduced to cut DWB CPU load during doorway traversal
+      vy_samples: 15               # raised for dense Y-velocity sampling — native mecanum strafe
+      vtheta_samples: 8
+      # RotateToGoal and PreferForward removed: both encode differential-drive
+      # assumptions (rotate-to-heading, penalise lateral motion) that directly
+      # fight mecanum strafing. Keeping only the kinematic/spatial critics
+      # allows the controller to plan and execute pure-strafe approach paths.
+      critics: ["Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: True
+      # Tightened footprint: 28cm x 22cm physical chassis plan footprint
+      # (half-extents: 14cm x 11cm), centered on base_link.
+      # Previous values (X:0.1165/-0.1759, Y:0.0825) were the STL full extent
+      # including sensor mounts — larger than the real wheel track, causing
+      # costmap inflation to block doorways and BackUp to see itself as in-collision.
+      footprint: "[ [0.14, 0.11], [0.14, -0.11], [-0.14, -0.11], [-0.14, 0.11] ]"
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        cost_scaling_factor: 15.0
+        inflation_radius: 0.25         # Reduced from 0.55+ to open up the 353mm doorway path
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: True
+      rolling_window: True
+      # width/height must be integers - Costmap2DROS pre-declares these as
+      # int-typed parameters in its C++ constructor (confirmed empirically:
+      # 2.5 crashed controller_server with InvalidParameterTypeException,
+      # "is of type {integer}, setting it to {double} is not allowed" -
+      # matches the real webots_ros2_turtlebot reference config, which also
+      # uses plain integers here). Internally still divided by `resolution`
+      # to get cell counts, so a whole-number size loses nothing.
+      width: 3
+      height: 3
+      resolution: 0.05
+      # Same tightened physical footprint as global_costmap — 28cm x 22cm.
+      footprint: "[ [0.14, 0.11], [0.14, -0.11], [-0.14, -0.11], [-0.14, 0.11] ]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        cost_scaling_factor: 15.0
+        inflation_radius: 0.25
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: True
+    cycle_frequency: 10.0
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    behavior_plugins: ["spin", "backup", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+      # Limit safety projection to 0.5s: at 5 cm/s this checks only the
+      # immediate ~2.5 cm behind the robot, preventing false-positive collision
+      # detection from the adjacent wall triggering an abort before any motion.
+      simulate_ahead_time: 0.5
+      backup_distance: 0.10        # 10 cm controlled reverse
+      backup_speed: 0.05           # 5 cm/s — slow enough to avoid wheel slip
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    spin_dist: 0.52                  # Spin ~30 degrees (0.52 radians) to align
+    spin_speed: 0.25
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: True
+    global_frame: map
+    robot_base_frame: base_link
+    # bt_navigator has no "odom_frame" parameter (confirmed via `strings` on
+    # libbt_navigator_core.so - only "odom_topic" exists, a topic name, not
+    # a TF frame). Pointed at the EKF-fused output (see architecture.md's
+    # node/data flow), not the raw /mecanum_drive_controller/odometry.
+    odom_topic: /rf2o/odom
+    # No default_bt_xml_filename here: this build's real parameter name is
+    # "default_nav_to_pose_bt_xml" (confirmed via `strings` on
+    # libbt_navigator_core.so), and leaving it unset already makes
+    # bt_navigator fall back to its own built-in default - which resolves,
+    # via its own package share directory, to exactly this same file:
+    # navigate_to_pose_w_replanning_and_recovery.xml. Setting the wrong key
+    # would have been a silent no-op anyway.
