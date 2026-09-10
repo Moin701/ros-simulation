@@ -87,6 +87,10 @@ controller_manager
                               → subscribes /mecanum_drive_controller/reference_unstamped (geometry_msgs/Twist)
                                  (NOT /cmd_vel — see decisions-and-gotchas.md)
 
+twist_mux (Multiplexer)
+  in:  /cmd_vel_nav (Nav2, priority 10), /cmd_vel_dock (Lidar Docker, priority 20), /cmd_vel_teleop (Keyboard, priority 100)
+  out: /mecanum_drive_controller/reference_unstamped
+
 Native Webots devices (via <webots> block in sim_control.urdf.xacro):
   Lidar        → /scan (LaserScan), /scan/point_cloud (PointCloud2)
   IMU triplet  → /imu/data (sensor_msgs/Imu, combined by webots_ros2_driver::Ros2IMU)

@@ -1,10 +1,25 @@
 rf2o_laser_odometry:
   ros__parameters:
+    use_sim_time: true              # REQUIRED: sync to Webots clock; prevents laser_frame TF timestamp drops
     laser_scan_topic: "/scan"
-    odom_topic: "/rf2o/odom"
+    odom_topic: "/odom_rf2o"        # renamed from /rf2o/odom - bt_navigator's odom_topic updated to match
     publish_tf: true                # CRITICAL: RF2O will now publish odom -> base_link directly!
+    # base_frame_id is deliberately left as "base_link", NOT "base_footprint"
+    # as requested: base_footprint is compiled out of this URDF entirely
+    # under use_webots:=true (see architecture.md's frame-split section) -
+    # it does not exist anywhere in this simulation's TF tree. Pointing
+    # RF2O at it would make every scan->base_footprint transform lookup
+    # fail, breaking odom publishing (and the odom->base_link TF, since
+    # publish_tf is on) outright rather than tuning anything.
     base_frame_id: "base_link"
     odom_frame_id: "odom"
     laser_frame_id: "laser_frame"
-    freq: 10.0                      # Match LiDAR update frequency
+    # Lowered from 15.0: RF2O's own process() timer runs at `freq` and logs
+    # "Waiting for laser_scans...." (WARN) on every tick that finds no new
+    # scan since the last one - confirmed in CLaserOdometry2DNode.cpp. /scan
+    # itself only arrives at ~7.7Hz (the Lidar's own rotation rate, not
+    # RF2O-configurable), so polling faster than that guarantees spurious
+    # warnings; the success path only logs at DEBUG, so it looks like total
+    # failure even when mostly working. Set at/below the real scan rate.
+    freq: 7.0
     init_pose_from_topic: ""        # Disable ground truth pose dependency so initial pose initializes to 0 on boot

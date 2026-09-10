@@ -15,6 +15,7 @@ install(
     scripts/aruco_detector.py
     scripts/visual_docker.py
     scripts/lidar_docker.py
+    scripts/maneuver_telemetry_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

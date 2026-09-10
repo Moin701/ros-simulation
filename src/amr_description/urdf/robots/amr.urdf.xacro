@@ -20,25 +20,29 @@
       prefix="$(arg prefix)"
       side="front_left"
       x_reflect="1"
-      y_reflect="1"/>
+      y_reflect="1"
+      contact_material="wheel_pos_45"/>
 
     <xacro:wheel
       prefix="$(arg prefix)"
       side="front_right"
       x_reflect="1"
-      y_reflect="-1"/>
+      y_reflect="-1"
+      contact_material="wheel_neg_45"/>
 
     <xacro:wheel
       prefix="$(arg prefix)"
       side="rear_left"
       x_reflect="-1"
-      y_reflect="1"/>
+      y_reflect="1"
+      contact_material="wheel_neg_45"/>
 
     <xacro:wheel
       prefix="$(arg prefix)"
       side="rear_right"
       x_reflect="-1"
-      y_reflect="-1"/>
+      y_reflect="-1"
+      contact_material="wheel_pos_45"/>
 
     <xacro:camera
       prefix="$(arg prefix)"

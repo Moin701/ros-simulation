@@ -207,9 +207,8 @@ Visualization Manager:
           rear_right_wheel_link:
             {}
         map:
-          {}
-        odom:
-          {}
+          odom:
+            {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -264,7 +263,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 1
+      Distance: 4.831009864807129
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -279,10 +278,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4000000059604645
+      Pitch: 0.9499995708465576
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 0.7799999713897705
+      Yaw: 3.0950005054473877
     Saved: ~
 Window Geometry:
   Displays:

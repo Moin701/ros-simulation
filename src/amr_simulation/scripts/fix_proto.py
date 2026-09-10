@@ -156,6 +156,34 @@ for side in ['front_left', 'front_right', 'rear_left', 'rear_right']:
         f'name "{side}_wheel_sensor"',
     )
 
+# 6. Inject contactMaterial into wheel Solid blocks.
+#    Mecanum rollers are mirrored diagonals: FL+RR = +45 deg, FR+RL = -45 deg.
+#    The contactMaterial field is inserted immediately before the 'physics Physics'
+#    line inside each wheel Solid. urdf2webots never emits this field, so it must
+#    be post-injected here after step 2b has already wrapped the boundingObject.
+for side, material in [
+    ('front_left',  'wheel_pos_45'),
+    ('rear_right',  'wheel_pos_45'),
+    ('front_right', 'wheel_neg_45'),
+    ('rear_left',   'wheel_neg_45'),
+]:
+    pattern = re.compile(
+        r'(          name "' + re.escape(side) + r'_wheel_link"\n'
+        r'(          boundingObject Pose \{.*?\}\n))'
+        r'(          physics)',
+        re.DOTALL
+    )
+    replacement = (
+        r'\1'
+        r'          contactMaterial "' + material + r'"\n'
+        r'\3'
+    )
+    new_content, n = pattern.subn(replacement, content)
+    assert n == 1, \
+        f"contactMaterial injection: expected 1 match for '{side}_wheel_link', got {n}"
+    content = new_content
+
+
 # 5. Strip invalid Physics from fixed (non-jointed) sensor sub-solids
 for frame_name in ['laser_frame', 'imu_link', 'cam_1_link']:
     pattern = (
@@ -181,5 +209,11 @@ assert content.count('boundingObject Pose {') == 5, \
 assert 'install/amr_description' not in content, "absolute mesh path leaked through!"
 assert content.count('physics Physics {') == 5, \
     f"expected exactly 5 Physics nodes (Robot base + 4 wheels), found {content.count('physics Physics {')}"
+pos_count = content.count('contactMaterial "wheel_pos_45"')
+neg_count = content.count('contactMaterial "wheel_neg_45"')
+assert pos_count == 2, \
+    f"expected 2 wheel_pos_45 contactMaterial fields, found {pos_count}"
+assert neg_count == 2, \
+    f"expected 2 wheel_neg_45 contactMaterial fields, found {neg_count}"
 
 print("fix_proto.py: all checks passed")

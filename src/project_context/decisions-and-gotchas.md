@@ -34,6 +34,16 @@ warning.** `update_rate: 50` (20ms) vs. Webots' 32ms `basicTimeStep`
 triggers `Ros2Control.cpp`'s own `RCLCPP_WARN_STREAM` every launch. It's
 cosmetic — confirmed in source it never blocks or delays anything.
 
+**Mecanum physics requires mirrored asymmetric friction.** 
+Applying a single `<contactMaterial>` with a 45-degree rotation to all four wheels collapses the mecanum force decomposition (all diagonal slip vectors point the same way), causing the robot to "ice skate" diagonally instead of rotating in place.
+Fixed by creating two Webots `ContactProperties` blocks (`wheel_pos_45` at `+0.785398` rad, and `wheel_neg_45` at `-0.785398` rad) and mapping FL/RR to the positive material and FR/RL to the negative material. This relies on `fix_proto.py` to inject the `contactMaterial` fields into the raw PROTO file, because `urdf2webots` ignores them.
+
+**Starting torque stiction stalls.**
+High static URDF `<dynamics damping="0.1" friction="0.05"/>` stalled the simulated motors. Reduced to `0.01` and added explicit `<limit effort="30.0" velocity="15.0"/>` to `wheel.urdf.xacro` to un-stall the PID. Reduced `coulombFriction` in `simulation.wbt` from 3.5 to 0.85 to stop wheel dragging.
+
+**Twist Multiplexing.**
+Multiple nodes (`teleop`, `nav2`, `lidar_docker.py`) command velocity. They all map to `/cmd_vel_<source>` which `twist_mux` prioritizes and forwards to `/mecanum_drive_controller/reference_unstamped`. Do NOT command the controller topic directly anymore.
+
 ## EKF (robot_localization)
 
 **`ekf_node` is the sole `odom -> base_link` TF publisher** (see
@@ -202,11 +212,22 @@ prediction, not something verified by an actual live traversal - watch
 for the robot refusing to path through narrow gaps and reconsider these
 two values first if it does.
 
-**The `RotateToGoal` DWB critic is a differential-drive assumption** (force
-rotate-in-place toward the goal heading before approaching). Kept in
-`nav2_params.yaml` because it was explicitly requested, but it works
-against this robot's ability to strafe directly at a goal. Worth revisiting
-if approach behavior looks unnaturally stiff once actually driven.
+**The `RotateToGoal` and `GoalAlign` DWB critics are differential-drive assumptions** (force
+rotate-in-place toward the goal heading before approaching). Removed them because they fight 
+this robot's ability to strafe directly at a goal. Only `Oscillation`, `BaseObstacle`, `PathDist`, 
+`GoalDist`, and `PathAlign` are used. `PathAlign` specifically prevents crab-walking by keeping 
+the robot body tangent to the planned path.
+
+**Stop-Turn-Drive elimination.**
+`smooth_path: true` is set in the `GridBased` global planner to generate fluid approach curves 
+instead of sharp, non-holonomic pivot corners. DWB's `vy_samples` is raised to `20` and 
+`min_vel_y`/`max_vel_y` are clamped to `±0.35` for dense, stable lateral motion sampling.
+
+**Controller noise floor and goal jitter.**
+`min_x_velocity_threshold`, `min_y_velocity_threshold`, and `min_theta_velocity_threshold` 
+are raised from `0.001` to `0.01` to suppress actuator chatter. `SimpleGoalChecker` is tuned 
+tight (`0.08`m / `0.15`rad) with `stateful: true` to enable clean hysteresis for goal settling 
+without wiggling.
 
 ## EKF / IMU wiring (live-confirmed bugs, 2026-08-27)
 

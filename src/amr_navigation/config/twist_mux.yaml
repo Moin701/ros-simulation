@@ -1,18 +1,17 @@
 twist_mux:
   ros__parameters:
     topics:
-      # Teleop (keyboard / joystick) — highest priority
       teleop:
-        topic: /cmd_vel_teleop
-        timeout: 0.1
-        priority: 30
-      # Lidar-reactive docking controller — medium priority
+        topic: "/cmd_vel_teleop"
+        timeout: 0.5
+        priority: 100
       docking:
-        topic: /cmd_vel_dock
-        timeout: 0.1
-        priority: 20
-      # Nav2 autonomous navigation — lowest priority
+        topic: "/cmd_vel_dock"
+        timeout: 0.5
+        priority: 50
       navigation:
-        topic: /cmd_vel_nav
-        timeout: 0.1
+        # Now routes through velocity_smoother's output, not controller_server's
+        # raw /cmd_vel_raw directly - see navigation.launch.py's velocity_smoother_node.
+        topic: "/cmd_vel_smoothed"
+        timeout: 0.5
         priority: 10

@@ -40,13 +40,14 @@ PROTO amr_robot [
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
           anchor 0.080000 0.074500 -0.032500
-          dampingConstant 0.1
-          staticFriction 0.05
+          dampingConstant 0.01
+          staticFriction 0.01
         }
         device [
           RotationalMotor {
             name "front_left_wheel_joint"
-            maxTorque 10000
+            maxVelocity 15.0
+            maxTorque 30.0
           }
           PositionSensor {
             name "front_left_wheel_sensor"
@@ -81,6 +82,7 @@ PROTO amr_robot [
               }
             ]
           }
+          contactMaterial "wheel_pos_45"
           physics Physics {
             density -1
             mass 0.150000
@@ -96,13 +98,14 @@ PROTO amr_robot [
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
           anchor 0.080000 -0.074500 -0.032500
-          dampingConstant 0.1
-          staticFriction 0.05
+          dampingConstant 0.01
+          staticFriction 0.01
         }
         device [
           RotationalMotor {
             name "front_right_wheel_joint"
-            maxTorque 10000
+            maxVelocity 15.0
+            maxTorque 30.0
           }
           PositionSensor {
             name "front_right_wheel_sensor"
@@ -133,6 +136,7 @@ PROTO amr_robot [
               }
             ]
           }
+          contactMaterial "wheel_neg_45"
           physics Physics {
             density -1
             mass 0.150000
@@ -148,13 +152,14 @@ PROTO amr_robot [
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
           anchor -0.080000 0.074500 -0.032500
-          dampingConstant 0.1
-          staticFriction 0.05
+          dampingConstant 0.01
+          staticFriction 0.01
         }
         device [
           RotationalMotor {
             name "rear_left_wheel_joint"
-            maxTorque 10000
+            maxVelocity 15.0
+            maxTorque 30.0
           }
           PositionSensor {
             name "rear_left_wheel_sensor"
@@ -185,6 +190,7 @@ PROTO amr_robot [
               }
             ]
           }
+          contactMaterial "wheel_neg_45"
           physics Physics {
             density -1
             mass 0.150000
@@ -200,13 +206,14 @@ PROTO amr_robot [
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
           anchor -0.080000 -0.074500 -0.032500
-          dampingConstant 0.1
-          staticFriction 0.05
+          dampingConstant 0.01
+          staticFriction 0.01
         }
         device [
           RotationalMotor {
             name "rear_right_wheel_joint"
-            maxTorque 10000
+            maxVelocity 15.0
+            maxTorque 30.0
           }
           PositionSensor {
             name "rear_right_wheel_sensor"
@@ -237,6 +244,7 @@ PROTO amr_robot [
               }
             ]
           }
+          contactMaterial "wheel_pos_45"
           physics Physics {
             density -1
             mass 0.150000
