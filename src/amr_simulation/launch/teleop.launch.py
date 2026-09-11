@@ -1,14 +1,16 @@
-"""Keyboard teleoperation for the mecanum-wheeled AMR.
+"""Keyboard teleoperation for the 2WD + caster AMR.
 
 Remaps teleop_twist_keyboard's default 'cmd_vel' output to the topic our
-installed mecanum_drive_controller actually listens on. That controller is a
-ChainableController (ros-humble-mecanum-drive-controller 2.53.3) configured
-with use_stamped_vel: false in controllers.yaml, so it expects plain
-geometry_msgs/Twist on <controller_name>/reference_unstamped - not /cmd_vel,
-and not TwistStamped. teleop_twist_keyboard's own 'stamped' parameter
-defaults to False, so it already publishes plain Twist by default (verified
-against the installed teleop_twist_keyboard.py) - the two match with no
-further parameters needed.
+installed diff_drive_controller actually listens on. Unlike the old
+mecanum_drive_controller (a ChainableController with no direct cmd_vel
+subscription), this build (ros-humble-diff-drive-controller 2.53.1,
+confirmed via `strings` on libdiff_drive_controller.so) is the classic
+topic-subscribing controller: with use_stamped_vel: false in
+controllers.yaml it expects plain geometry_msgs/Twist on
+<controller_name>/cmd_vel_unstamped. teleop_twist_keyboard's own 'stamped'
+parameter defaults to False, so it already publishes plain Twist by default
+(verified against the installed teleop_twist_keyboard.py) - the two match
+with no further parameters needed.
 """
 
 from launch import LaunchDescription
@@ -30,7 +32,7 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[{'use_sim_time': use_sim_time}],
-        remappings=[('/cmd_vel', '/mecanum_drive_controller/reference_unstamped')],
+        remappings=[('/cmd_vel', '/diff_drive_controller/cmd_vel_unstamped')],
     )
 
     return LaunchDescription([

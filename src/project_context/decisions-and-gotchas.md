@@ -383,6 +383,80 @@ Prefer asking a human to run and observe a live launch over repeated
 automated `timeout`-wrapped test cycles — it's disruptive to a real
 GUI session and easy to leave in a broken shared state.
 
+## Drivetrain: 2WD + caster, not mecanum (as of this transition)
+
+The robot was fully re-platformed from a 4-wheel mecanum drive to a 2-wheel
+differential drive + 1 passive caster, using the physical geometry from
+github.com/ravithakur-projects/ROS-Three-Wheeled-Robot-Navigation-Project
+("rmp_bot" - a `move_base`/ROS1 2WD+caster robot, despite the repo's "three-
+wheeled" name referring to the caster as the third ground contact, not a
+third driven wheel). Chassis shrank from 280x220x150mm to 200x170x110mm
+(mass 4.6kg -> 7.21kg chassis-only, per rmp_bot's own base_link inertial).
+Wheel radius (32.5mm) coincidentally matches the old mecanum wheels exactly;
+wheel separation is now 170mm (was 169mm) and wheel width 25mm (was 30.4mm).
+
+Everything downstream that assumed a holonomic/mecanum platform had to
+change, not just the URDF:
+- `controllers.yaml`: `mecanum_drive_controller` -> `diff_drive_controller`
+  (ros-humble-diff-drive-controller 2.53.1). Unlike mecanum's
+  ChainableController (no direct cmd_vel subscription, commands go to
+  `.../reference_unstamped`), this build IS the classic topic-subscribing
+  controller - it listens on `<name>/cmd_vel_unstamped` and publishes
+  odometry on `<name>/odom`. Every place that published/remapped to
+  `/mecanum_drive_controller/reference_unstamped` (twist_mux's cmd_vel_out
+  remap in sim.launch.py, teleop.launch.py, visual_docker.py) had to move
+  to `/diff_drive_controller/cmd_vel_unstamped`.
+- `amcl` (both nav2_params.yaml's block AND the standalone amcl.yaml, which
+  must be kept in sync per that file's own duplication note):
+  `robot_model_type` changed from `nav2_amcl::OmniMotionModel` to
+  `nav2_amcl::DifferentialMotionModel`. This isn't cosmetic - Omni models a
+  particle motion prediction that includes lateral/strafing motion a 2WD
+  robot physically cannot produce. Left on Omni, AMCL would silently predict
+  motion the real robot can never make.
+- `ros2_control.urdf.xacro`'s `webots_ros2_control::Ros2ControlSystem`
+  plugin declaration stayed exactly where it already was, inside
+  `<ros2_control><hardware><plugin>` - a prescriptive task for this
+  transition asked to move it under the root `<robot><webots>` tag instead,
+  which would have been wrong: that tag only accepts Webots-bridge plugins
+  like `webots_ros2_control::Ros2Control` (a different class, already
+  correctly in sim_control.urdf.xacro), not a `hardware_interface::
+  SystemInterface` pluginlib registration. The two plugin types load
+  through completely different mechanisms.
+- Nav2's padded footprint shrank from ±0.17/±0.13m to ±0.13/±0.105m (same
+  +3cm/+2cm margin convention as before, applied to the smaller chassis).
+- The passive caster is modeled as a fixed-joint sphere (not a real swivel
+  joint) with a dedicated near-zero-friction "caster_material"
+  ContactProperties in simulation.wbt/fix_proto.py - it contributes no
+  drive/steering DOF either way, so a low-friction fixed sphere is the
+  standard simplification.
+
+**Wheel mesh transform bug found right after this transition (real, not
+cosmetic)**: the initial pass copied the old mecanum wheel's visual
+`<origin xyz="0 0 0" rpy="1.5708 0 0"/>` verbatim onto the new rmp_bot wheel
+meshes, which rendered both wheels floating in the wrong place/orientation
+in both RViz and Webots (confirmed visually, not just in review). The two
+mesh sources use different authoring conventions and are not
+interchangeable: rmp_bot's `l_wheel_1.stl`/`r_wheel_1.stl` raw vertices are
+already expressed directly in base_link's own absolute frame (a Fusion360
+URDF-exporter quirk), which their own xacro compensates for by setting each
+wheel's visual origin to the exact negation of its joint origin (e.g.
+joint `-0.05 -0.085 0.0325` -> visual `0.05 0.085 -0.0325`) with **no**
+rotation - the mesh's own bounding box already has its thin (25mm) axis on
+Y, matching the joint axis. `wheel.urdf.xacro` now reproduces that
+cancellation algebraically (`-wheel_xoff`, `-y_reflect*(wheel_separation/2)`,
+`-wheel_radius`, `rpy 0 0 0`) instead of assuming every wheel mesh needs the
+old 90-degree flip. Lesson: a mesh's required origin transform is a property
+of *that specific mesh's* authoring convention, not something safe to copy
+from a previous mesh even when the macro structure looks reusable.
+
+**urdf2webots gotcha found during this transition**: passing `--robot-name`
+together with `--output=*.proto` silently produces NO file at all (exit
+code 0, no error) - `--robot-name` switches the tool into "generate a Robot
+node string" mode instead of "generate a PROTO file" (confirmed by reading
+importer.py's `isProto` branch). Omit `--robot-name` when writing a .proto;
+the robot's internal name is derived from the output filename's basename
+automatically.
+
 ## Map file location
 
 Saved maps go to `~/ros/maps/` (e.g. `~/ros/maps/room_map.yaml` +

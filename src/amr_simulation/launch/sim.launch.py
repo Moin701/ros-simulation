@@ -85,13 +85,13 @@ def generate_launch_description():
         output='screen',
         arguments=['joint_state_broadcaster'] + controller_manager_timeout,
     )
-    mecanum_drive_controller_spawner = Node(
+    diff_drive_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
         output='screen',
-        arguments=['mecanum_drive_controller'] + controller_manager_timeout,
+        arguments=['diff_drive_controller'] + controller_manager_timeout,
     )
-    ros_control_spawners = [joint_state_broadcaster_spawner, mecanum_drive_controller_spawner]
+    ros_control_spawners = [joint_state_broadcaster_spawner, diff_drive_controller_spawner]
 
     # Wait for Webots to actually connect the driver before spawning controllers
     waiting_nodes = WaitForControllerConnection(
@@ -121,11 +121,17 @@ def generate_launch_description():
         parameters=[ekf_params_file, {'use_sim_time': use_sim_time}]
     )
 
-    # twist_mux: merges velocity commands from three channels
-    #   /cmd_vel_teleop (priority 30) — keyboard/joystick
-    #   /cmd_vel_dock   (priority 20) — lidar_docker reactive controller
-    #   /cmd_vel_nav    (priority 10) — Nav2 autonomous planner
-    # Output is remapped to the mecanum controller's subscription topic.
+    # twist_mux: merges velocity commands from three channels (see
+    # amr_navigation/config/twist_mux.yaml for the current priorities -
+    #   teleop=100, docking=50, navigation=10).
+    # Output is remapped to diff_drive_controller's real command topic:
+    # <controller_name>/cmd_vel_unstamped (confirmed via `strings` on
+    # libdiff_drive_controller.so - this build, unlike the old
+    # mecanum_drive_controller, is the classic topic-subscribing controller,
+    # not a ChainableController with a "reference"-style input port; taking
+    # cmd_vel_unstamped rather than cmd_vel since use_stamped_vel is false
+    # in controllers.yaml, matching twist_mux's plain geometry_msgs/Twist
+    # output).
     twist_mux_params = os.path.join(
         get_package_share_directory('amr_navigation'), 'config', 'twist_mux.yaml'
     )
@@ -135,7 +141,7 @@ def generate_launch_description():
         name='twist_mux',
         output='screen',
         parameters=[twist_mux_params, {'use_sim_time': use_sim_time}],
-        remappings=[('cmd_vel_out', '/mecanum_drive_controller/reference_unstamped')],
+        remappings=[('cmd_vel_out', '/diff_drive_controller/cmd_vel_unstamped')],
     )
 
     # Lidar-reactive docking controller — publishes to /cmd_vel_dock

@@ -13,25 +13,30 @@ WorldInfo {
         2.5
       ]
     }
+    # wheel_material: plain differential-drive wheel, both left/right share
+    # this one material - no frictionRotation split needed since these are
+    # ordinary single-axis rolling wheels, not angled mecanum rollers.
+    # coulombFriction matches wheel.urdf.xacro's Gazebo-path mu1/mu2 (0.8)
+    # for parity between the two friction declarations.
     ContactProperties {
-      material1 "wheel_pos_45"
+      material1 "wheel_material"
       material2 "default"
       coulombFriction [
-        0.85
-        0.05
+        0.8
       ]
-      frictionRotation 0.785398 0
       softCFM 0.00001
       softERP 0.8
     }
+    # caster_material: near-zero friction per the task's directive
+    # (mu1=mu2=0.001) - the caster is a fixed (non-swiveling) joint, so low
+    # friction is what lets it slide freely as the diff-drive wheels steer,
+    # standing in for a real caster's free-swivel DOF.
     ContactProperties {
-      material1 "wheel_neg_45"
+      material1 "caster_material"
       material2 "default"
       coulombFriction [
-        0.85
-        0.05
+        0.001
       ]
-      frictionRotation -0.785398 0
       softCFM 0.00001
       softERP 0.8
     }

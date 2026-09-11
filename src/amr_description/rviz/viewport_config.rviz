@@ -8,7 +8,7 @@ Panels:
         - /RobotModel1
         - /TF1
       Splitter Ratio: 0.5
-    Tree Height: 341
+    Tree Height: 664
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -95,12 +95,7 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        front_left_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        front_right_wheel_link:
+        caster_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -115,12 +110,12 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        rear_left_wheel_link:
+        left_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        rear_right_wheel_link:
+        right_wheel_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -158,21 +153,15 @@ Visualization Manager:
           Value: true
         cam_1_link:
           Value: true
-        front_left_wheel_link:
-          Value: true
-        front_right_wheel_link:
+        caster_wheel_link:
           Value: true
         imu_link:
           Value: true
         laser_frame:
           Value: true
-        map:
+        left_wheel_link:
           Value: true
-        odom:
-          Value: true
-        rear_left_wheel_link:
-          Value: true
-        rear_right_wheel_link:
+        right_wheel_link:
           Value: true
       Marker Scale: 0.30000001192092896
       Name: TF
@@ -194,20 +183,15 @@ Visualization Manager:
             cam_1_infra2_frame:
               cam_1_infra2_optical_frame:
                 {}
-          front_left_wheel_link:
-            {}
-          front_right_wheel_link:
+          caster_wheel_link:
             {}
           imu_link:
             {}
           laser_frame:
             {}
-          rear_left_wheel_link:
+          left_wheel_link:
             {}
-          rear_right_wheel_link:
-            {}
-        map:
-          odom:
+          right_wheel_link:
             {}
       Update Interval: 0
       Value: true
@@ -263,7 +247,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 4.831009864807129
+      Distance: 0.8651977181434631
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -278,10 +262,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9499995708465576
+      Pitch: 0.5950000286102295
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.0950005054473877
+      Yaw: 1.7949986457824707
     Saved: ~
 Window Geometry:
   Displays:
@@ -289,7 +273,7 @@ Window Geometry:
   Height: 900
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001d700000326fc0200000002fb000000100044006900730070006c006100790073010000003f000001e3000000cc00fffffffb0000000a0056006900650077007301000002280000013d000000a900ffffff0000039b0000032600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001d700000326fc0200000002fb000000100044006900730070006c006100790073010000003f00000326000000cc00fffffffb0000000a0056006900650077007300000002280000013d000000a900ffffff0000039b0000032600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Views:
     collapsed: false
   Width: 1400

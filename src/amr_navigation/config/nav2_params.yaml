@@ -26,7 +26,16 @@ amcl:
       y: 0.357
       z: 0.0
       yaw: -0.027
-    robot_model_type: "nav2_amcl::OmniMotionModel"
+    # Switched from OmniMotionModel to DifferentialMotionModel for the 2WD +
+    # caster transition (confirmed real via `strings` on libamcl_core.so -
+    # nav2_amcl::DifferentialMotionModel exists alongside OmniMotionModel).
+    # Omni modeled the old 4-wheel mecanum platform's holonomic strafing
+    # capability in AMCL's particle motion prediction; a 2WD diff-drive robot
+    # physically cannot strafe, so leaving Omni here would let the particle
+    # filter predict lateral motion the real (and simulated) robot can never
+    # produce - a silent motion-model mismatch, not just a missed
+    # optimization.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
 
     min_particles: 500
     max_particles: 2000
@@ -129,12 +138,12 @@ controller_server:
       prune_distance: 1.0
       min_vel_x: -0.35
       max_vel_x: 0.35
-      # Lateral sampling fully disabled (not just capped) - this commits the
-      # local planner to nose-forward-only motion, eliminating crab-walking
-      # and the trajectory flicker it caused. This gives up mecanum strafing
-      # in DWB entirely, reversing the earlier holonomic-specific tuning
-      # (vy_samples/PathAlign work done for strafe-capable approach paths) -
-      # a deliberate tradeoff, not an oversight.
+      # Lateral sampling disabled: was a deliberate tradeoff back when this
+      # was a mecanum robot capable of strafing (giving up that capability
+      # to eliminate crab-walking/trajectory flicker). Under the 2WD +
+      # caster transition it's no longer a tradeoff at all - a differential-
+      # drive robot has no lateral DOF, so min/max_vel_y must be 0 to match
+      # physical reality, not just tuning preference.
       min_vel_y: 0.0
       max_vel_y: 0.0
       min_vel_theta: 0.06
@@ -186,10 +195,14 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: True
       transform_tolerance: 1.0   # raised from 0.5 to absorb sim clock skips
-      # Padded footprint: 34cm x 26cm (±0.17m x ±0.13m)
-      # Physical chassis: ±0.14m x ±0.11m; +3cm X / +2cm Y safety margin covers
-      # wheel protrusion, sensor mounts, and Webots AABB rounding.
-      footprint: "[[-0.17, -0.13], [-0.17, 0.13], [0.17, 0.13], [0.17, -0.13]]"
+      # Padded footprint for the 2WD+caster chassis: 26cm x 21cm (±0.13m x
+      # ±0.105m). Physical chassis (rmp_bot geometry): ±0.10m x ±0.085m;
+      # same +3cm X / +2cm Y safety margin convention as the old mecanum
+      # footprint, covering sensor mounts and Webots AABB rounding. The
+      # caster's own forward reach (x=0.1 + caster_radius 0.0075 = 0.1075m)
+      # is already inside this ±0.13m half-length, so no separate asymmetric
+      # allowance is needed for it.
+      footprint: "[[-0.13, -0.105], [-0.13, 0.105], [0.13, 0.105], [0.13, -0.105]]"
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -230,8 +243,8 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      # Padded footprint matches global_costmap — 34cm x 26cm (±0.17m x ±0.13m).
-      footprint: "[[-0.17, -0.13], [-0.17, 0.13], [0.17, 0.13], [0.17, -0.13]]"
+      # Padded footprint matches global_costmap — 26cm x 21cm (±0.13m x ±0.105m).
+      footprint: "[[-0.13, -0.105], [-0.13, 0.105], [0.13, 0.105], [0.13, -0.105]]"
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"

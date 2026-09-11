@@ -18,31 +18,13 @@
 
     <xacro:wheel
       prefix="$(arg prefix)"
-      side="front_left"
-      x_reflect="1"
-      y_reflect="1"
-      contact_material="wheel_pos_45"/>
+      side="left"
+      y_reflect="1"/>
 
     <xacro:wheel
       prefix="$(arg prefix)"
-      side="front_right"
-      x_reflect="1"
-      y_reflect="-1"
-      contact_material="wheel_neg_45"/>
-
-    <xacro:wheel
-      prefix="$(arg prefix)"
-      side="rear_left"
-      x_reflect="-1"
-      y_reflect="1"
-      contact_material="wheel_neg_45"/>
-
-    <xacro:wheel
-      prefix="$(arg prefix)"
-      side="rear_right"
-      x_reflect="-1"
-      y_reflect="-1"
-      contact_material="wheel_pos_45"/>
+      side="right"
+      y_reflect="-1"/>
 
     <xacro:camera
       prefix="$(arg prefix)"
@@ -50,20 +32,22 @@
       xyz_offset="0.105 0 0.05"
       rpy_offset="0 0 0"/>
 
-    <!-- z=0.22: chassis.stl's own measured top is z=0.1905 (see
-         base.urdf.xacro's bbox comment). The previous xyz_offset (0.0825)
-         put the lidar's own mesh spanning roughly z=[0.062,0.101] -
-         entirely inside the chassis's 0.0540..0.1905 height range (measured
-         directly from lidar.stl + chassis.stl), so every one of its 360
-         rays hit the inside of its own chassis shell within centimeters
-         (well under minRange 0.1) and reported no return in every
-         direction, regardless of the room's actual wall distances. This
-         raises it clear of the chassis roof with a small margin. -->
+    <!-- Originally z=0.22, sized against the old 280x220x150mm mecanum
+         chassis (top at z=0.1905) - a 0.0295m clearance margin above the
+         chassis roof to clear a self-collision blind spot (see
+         decisions-and-gotchas.md). Left unchanged when the 2WD+caster
+         transition first landed, which left the lidar visibly floating
+         with a large gap above the new, much shorter chassis (top at
+         z=0.1175, see base.urdf.xacro) - confirmed visually in Webots/RViz.
+         Recomputed here with the SAME 0.0295m margin against the new
+         chassis top (0.1175 + 0.0295 = 0.1470, rounded to 0.15) rather than
+         reusing the old absolute height, closing the gap while keeping the
+         original design intent (small positive clearance, not flush). -->
     <xacro:lidar
       prefix="$(arg prefix)"
       parent="base_link"
       frame_id="laser_frame"
-      xyz_offset="0 0 0.22"
+      xyz_offset="0 0 0.15"
       rpy_offset="0 0 0"
       mesh_xyz_offset="0 0 0"
       mesh_rpy_offset="${-M_PI/2} 0 0"

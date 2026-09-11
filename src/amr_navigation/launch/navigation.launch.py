@@ -1,9 +1,10 @@
 """Full Nav2 autonomy stack (Milestone 3): static map + AMCL localization,
-NavFn global planning, DWB local control (holonomic-tuned for the mecanum
-AMR), and behavior/BT execution - coordinated by nav2_lifecycle_manager so
-every server comes up active automatically. Run alongside
-amr_simulation/sim.launch.py, which provides the EKF-fused odom -> base_link
-TF this whole stack depends on."""
+Smac global planning, DWB local control (nose-forward-only, matching the
+2WD + caster AMR's non-holonomic drive), and behavior/BT execution -
+coordinated by nav2_lifecycle_manager so every server comes up active
+automatically. Run alongside amr_simulation/sim.launch.py, which provides
+the odom -> base_link TF this whole stack depends on (published by
+rf2o_laser_odometry, not ekf_node - see rf2o_params.yaml's publish_tf)."""
 
 import os
 

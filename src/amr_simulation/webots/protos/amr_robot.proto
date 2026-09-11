@@ -26,69 +26,103 @@ PROTO amr_robot [
     synchronization IS synchronization
     selfCollision IS selfCollision
     children [
-      Shape {
-        appearance DEF green PBRAppearance {
-          baseColor 0.000000 0.700000 0.000000
-          roughness 1.000000
-          metalness 0
+      Transform {
+        scale 0.001000 0.001000 0.001000
+        children [
+          Shape {
+            appearance DEF green PBRAppearance {
+              baseColor 0.000000 0.700000 0.000000
+              roughness 1.000000
+              metalness 0
+            }
+            geometry DEF chassis Mesh {
+              url "meshes/chassis.stl"
+            }
+          }
+        ]
+      }
+      Solid {
+        translation 0.100000 0.000000 0.007500
+        children [
+          Transform {
+            translation -0.100000 0.000000 -0.007500
+            scale 0.001000 0.001000 0.001000
+            children [
+              Shape {
+                appearance DEF dark_gray PBRAppearance {
+                  baseColor 0.200000 0.200000 0.200000
+                  roughness 1.000000
+                  metalness 0
+                }
+                geometry DEF caster_1 Mesh {
+                  url "meshes/caster_1.stl"
+                }
+              }
+            ]
+          }
+        ]
+        name "caster_wheel_link"
+        boundingObject Pose {
+          translation 0.000000 0.000000 -0.003750
+          children [
+            Cylinder {
+              radius 0.02
+              height 0.0075
+            }
+          ]
         }
-        geometry DEF chassis Mesh {
-          url "meshes/chassis.stl"
-        }
+        contactMaterial "caster_material"
       }
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
-          anchor 0.080000 0.074500 -0.032500
+          anchor -0.050000 0.085000 0.032500
           dampingConstant 0.01
           staticFriction 0.01
         }
         device [
           RotationalMotor {
-            name "front_left_wheel_joint"
+            name "left_wheel_joint"
             maxVelocity 15.0
             maxTorque 30.0
           }
           PositionSensor {
-            name "front_left_wheel_sensor"
+            name "left_wheel_sensor"
           }
         ]
         endPoint Solid {
-          translation 0.080000 0.074500 -0.032500
+          translation -0.050000 0.085000 0.032500
           children [
-            Pose {
-              rotation 1.000000 0.000000 0.000000 1.570800
+            Transform {
+              translation 0.050000 -0.085000 -0.032500
+              scale 0.001000 0.001000 0.001000
               children [
                 Shape {
-                  appearance DEF dark_gray PBRAppearance {
-                    baseColor 0.200000 0.200000 0.200000
-                    roughness 1.000000
-                    metalness 0
-                  }
-                  geometry DEF front_left_wheel Mesh {
-                    url "meshes/front_left_wheel.stl"
+                  appearance USE dark_gray
+                  geometry DEF left_wheel Mesh {
+                    url "meshes/left_wheel.stl"
                   }
                 }
               ]
             }
           ]
-          name "front_left_wheel_link"
+          name "left_wheel_link"
           boundingObject Pose {
             rotation 1.000000 0.000000 0.000000 1.570800
             children [
               Cylinder {
                 radius 0.0325
-                height 0.0304
+                height 0.025
               }
             ]
           }
-          contactMaterial "wheel_pos_45"
+          contactMaterial "wheel_material"
           physics Physics {
             density -1
-            mass 0.150000
+            mass 0.118200
             centerOfMass [ 0.000000 0.000000 0.000000 ]
             inertiaMatrix [
-              5.116137e-05 7.921875e-05 5.116137e-05
+              3.736844e-05 6.242438e-05 3.736844e-05
               0.000000e+00 0.000000e+00 0.000000e+00
             ]
           }
@@ -97,160 +131,53 @@ PROTO amr_robot [
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0.000000 1.000000 0.000000
-          anchor 0.080000 -0.074500 -0.032500
+          anchor -0.050000 -0.085000 0.032500
           dampingConstant 0.01
           staticFriction 0.01
         }
         device [
           RotationalMotor {
-            name "front_right_wheel_joint"
+            name "right_wheel_joint"
             maxVelocity 15.0
             maxTorque 30.0
           }
           PositionSensor {
-            name "front_right_wheel_sensor"
+            name "right_wheel_sensor"
           }
         ]
         endPoint Solid {
-          translation 0.080000 -0.074500 -0.032500
+          translation -0.050000 -0.085000 0.032500
           children [
-            Pose {
-              rotation 1.000000 0.000000 0.000000 1.570800
+            Transform {
+              translation 0.050000 0.085000 -0.032500
+              scale 0.001000 0.001000 0.001000
               children [
                 Shape {
                   appearance USE dark_gray
-                  geometry DEF front_right_wheel Mesh {
-                    url "meshes/front_right_wheel.stl"
+                  geometry DEF right_wheel Mesh {
+                    url "meshes/right_wheel.stl"
                   }
                 }
               ]
             }
           ]
-          name "front_right_wheel_link"
+          name "right_wheel_link"
           boundingObject Pose {
             rotation 1.000000 0.000000 0.000000 1.570800
             children [
               Cylinder {
                 radius 0.0325
-                height 0.0304
+                height 0.025
               }
             ]
           }
-          contactMaterial "wheel_neg_45"
+          contactMaterial "wheel_material"
           physics Physics {
             density -1
-            mass 0.150000
+            mass 0.118200
             centerOfMass [ 0.000000 0.000000 0.000000 ]
             inertiaMatrix [
-              5.116137e-05 7.921875e-05 5.116137e-05
-              0.000000e+00 0.000000e+00 0.000000e+00
-            ]
-          }
-        }
-      }
-      HingeJoint {
-        jointParameters HingeJointParameters {
-          axis 0.000000 1.000000 0.000000
-          anchor -0.080000 0.074500 -0.032500
-          dampingConstant 0.01
-          staticFriction 0.01
-        }
-        device [
-          RotationalMotor {
-            name "rear_left_wheel_joint"
-            maxVelocity 15.0
-            maxTorque 30.0
-          }
-          PositionSensor {
-            name "rear_left_wheel_sensor"
-          }
-        ]
-        endPoint Solid {
-          translation -0.080000 0.074500 -0.032500
-          children [
-            Pose {
-              rotation 1.000000 0.000000 0.000000 1.570800
-              children [
-                Shape {
-                  appearance USE dark_gray
-                  geometry DEF rear_left_wheel Mesh {
-                    url "meshes/rear_left_wheel.stl"
-                  }
-                }
-              ]
-            }
-          ]
-          name "rear_left_wheel_link"
-          boundingObject Pose {
-            rotation 1.000000 0.000000 0.000000 1.570800
-            children [
-              Cylinder {
-                radius 0.0325
-                height 0.0304
-              }
-            ]
-          }
-          contactMaterial "wheel_neg_45"
-          physics Physics {
-            density -1
-            mass 0.150000
-            centerOfMass [ 0.000000 0.000000 0.000000 ]
-            inertiaMatrix [
-              5.116137e-05 7.921875e-05 5.116137e-05
-              0.000000e+00 0.000000e+00 0.000000e+00
-            ]
-          }
-        }
-      }
-      HingeJoint {
-        jointParameters HingeJointParameters {
-          axis 0.000000 1.000000 0.000000
-          anchor -0.080000 -0.074500 -0.032500
-          dampingConstant 0.01
-          staticFriction 0.01
-        }
-        device [
-          RotationalMotor {
-            name "rear_right_wheel_joint"
-            maxVelocity 15.0
-            maxTorque 30.0
-          }
-          PositionSensor {
-            name "rear_right_wheel_sensor"
-          }
-        ]
-        endPoint Solid {
-          translation -0.080000 -0.074500 -0.032500
-          children [
-            Pose {
-              rotation 1.000000 0.000000 0.000000 1.570800
-              children [
-                Shape {
-                  appearance USE dark_gray
-                  geometry DEF rear_right_wheel Mesh {
-                    url "meshes/rear_right_wheel.stl"
-                  }
-                }
-              ]
-            }
-          ]
-          name "rear_right_wheel_link"
-          boundingObject Pose {
-            rotation 1.000000 0.000000 0.000000 1.570800
-            children [
-              Cylinder {
-                radius 0.0325
-                height 0.0304
-              }
-            ]
-          }
-          contactMaterial "wheel_pos_45"
-          physics Physics {
-            density -1
-            mass 0.150000
-            centerOfMass [ 0.000000 0.000000 0.000000 ]
-            inertiaMatrix [
-              5.116137e-05 7.921875e-05 5.116137e-05
+              3.736844e-05 6.242438e-05 3.736844e-05
               0.000000e+00 0.000000e+00 0.000000e+00
             ]
           }
@@ -292,7 +219,7 @@ PROTO amr_robot [
         name "cam_1_link"
       }
       Solid {
-        translation 0.000000 0.000000 0.220000
+        translation 0.000000 0.000000 0.150000
         children [
           Transform {
             rotation -1.000000 0.000000 0.000000 1.570796
@@ -351,19 +278,19 @@ PROTO amr_robot [
     ]
     name IS name
     boundingObject Pose {
-      translation 0.000000 0.000000 0.107500
+      translation 0.000000 0.000000 0.055000
       children [
         Box {
-          size 0.280000 0.220000 0.150000
+           size 0.200000 0.170000 0.110000
         }
       ]
     }
     physics Physics {
       density -1
-      mass 4.600000
-      centerOfMass [ 0.000000 0.000000 0.107500 ]
+      mass 7.210000
+      centerOfMass [ 0.000000 0.000000 0.055000 ]
       inertiaMatrix [
-        2.717833e-02 3.867833e-02 4.860667e-02
+        2.463417e-02 3.130342e-02 4.139742e-02
         0.000000e+00 0.000000e+00 0.000000e+00
       ]
     }

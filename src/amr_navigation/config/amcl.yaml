@@ -37,12 +37,13 @@ amcl:
       z: 0.0
       yaw: -0.027
 
-    # AMR is mecanum-wheeled (holonomic) - the default AMCL motion model
-    # (nav2_amcl::DifferentialMotionModel) assumes forward/rotate-only
-    # motion and doesn't model sideways strafing at all. Confirmed
-    # nav2_amcl::OmniMotionModel is a real registered plugin
-    # (/opt/ros/humble/share/nav2_amcl/plugins.xml).
-    robot_model_type: "nav2_amcl::OmniMotionModel"
+    # Switched from OmniMotionModel to DifferentialMotionModel for the 2WD +
+    # caster transition (confirmed real via `strings` on libamcl_core.so).
+    # Kept in sync with nav2_navigation/config/nav2_params.yaml's amcl block
+    # per this file's own duplication note above - both must agree on the
+    # robot's actual drive kinematics or one of the two localization entry
+    # points silently mismodels the robot's motion.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
 
     # Particle count tuning for local tracking
     min_particles: 500

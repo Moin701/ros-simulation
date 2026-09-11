@@ -8,68 +8,51 @@ controller_manager:
    joint_state_broadcaster:
      type: joint_state_broadcaster/JointStateBroadcaster
 
-   mecanum_drive_controller:
-     type: mecanum_drive_controller/MecanumDriveController
+   diff_drive_controller:
+     type: diff_drive_controller/DiffDriveController
 
-# Parameters for the mecanum drive controller.
+# Parameters for the differential-drive controller.
 #
-# NOTE: this targets the mecanum_drive_controller actually installed via apt
-# (ros-humble-mecanum-drive-controller 2.53.3), which is a ChainableController
-# with a completely different parameter schema than older/tutorial versions of
-# this controller (verified directly against the installed
-# mecanum_drive_controller_parameters.hpp - no wheel_base/wheel_separation/
-# cmd_vel_timeout/open_loop/velocity limits params exist in this build).
-#
-# IMPORTANT: this version does NOT subscribe to /cmd_vel. Velocity commands go
-# to <controller_name>/reference_unstamped (geometry_msgs/Twist, since
-# use_stamped_vel is false below) or .../reference (TwistStamped) if set true.
-mecanum_drive_controller:
+# NOTE: targets ros-humble-diff-drive-controller 2.53.1 as actually installed
+# (verified via `strings` on libdiff_drive_controller.so) - unlike this
+# project's mecanum_drive_controller (a ChainableController with no direct
+# cmd_vel subscription), this build IS the classic topic-based controller:
+# it subscribes to <controller_name>/cmd_vel_unstamped (geometry_msgs/Twist,
+# since use_stamped_vel is false below) or .../cmd_vel (TwistStamped) if set
+# true, and echoes the applied/limited command back out on
+# <controller_name>/cmd_vel_out.
+diff_drive_controller:
  ros__parameters:
-   # Command/state joint names (command and state are the same physical
-   # joints here - no separate encoder joints)
-   front_left_wheel_command_joint_name: front_left_wheel_joint
-   front_right_wheel_command_joint_name: front_right_wheel_joint
-   rear_left_wheel_command_joint_name: rear_left_wheel_joint
-   rear_right_wheel_command_joint_name: rear_right_wheel_joint
-   front_left_wheel_state_joint_name: front_left_wheel_joint
-   front_right_wheel_state_joint_name: front_right_wheel_joint
-   rear_left_wheel_state_joint_name: rear_left_wheel_joint
-   rear_right_wheel_state_joint_name: rear_right_wheel_joint
+   left_wheel_names: ["left_wheel_joint"]
+   right_wheel_names: ["right_wheel_joint"]
 
-   kinematics:
-     wheels_radius: 0.0325  # wheel.urdf.xacro wheel_radius
-     # lx + ly, from wheel.urdf.xacro's real joint anchors (front_left anchor
-     # x=0.08 y=0.0745): lx = wheel_xoff = 0.08, ly = wheel_separation/2 +
-     # wheel_yoff = 0.169/2 - 0.01 = 0.0745
-     sum_of_robot_center_projection_on_X_Y_axis: 0.1545
-     base_frame_offset:
-       x: 0.0
-       y: 0.0
-       theta: 0.0
+   # wheel.urdf.xacro's wheel_radius/wheel_separation - measured off
+   # rmp_bot's r_wheel_1.stl bounding box and joint anchors (y=+-0.085).
+   wheel_radius: 0.0325
+   wheel_separation: 0.170
 
    # base_footprint is bypassed under use_webots:=true (base.urdf.xacro) -
    # base_link is the actual root of the TF tree in simulation.
    base_frame_id: base_link
    odom_frame_id: odom
-   # false: this controller build has no tf2_ros::TransformBroadcaster at
-   # all (confirmed via `strings` on libmecanum_drive_controller.so - no
-   # TransformBroadcaster/sendTransform symbols anywhere). Its TF-shaped
-   # data only reaches /mecanum_drive_controller/tf_odometry, which nothing
-   # bridges onto the real /tf tree, so this flag was never going to
-   # produce a working odom->base_link transform on this build regardless
-   # of its value. robot_localization's ekf_node (localization.launch.py)
-   # is the one and only odom->base_link TF publisher instead.
+   # False regardless of whether this build's TF broadcast path is actually
+   # reachable internally: rf2o_laser_odometry is this project's one and
+   # only intended odom->base_link TF publisher (publish_tf: true in
+   # rf2o_params.yaml). Setting this false is what guarantees no competing
+   # broadcaster fights it for the same transform, not an assumption about
+   # what the controller would otherwise do.
    enable_odom_tf: false
 
    use_stamped_vel: false
-   reference_timeout: 0.5
+   cmd_vel_timeout: 0.5
 
-   # Non-zero covariance diagonals required by robot_localization's EKF:
-   # all-zero covariance is treated as infinite certainty, which causes the
-   # filter to become numerically degenerate (the Kalman gain collapses and
-   # the filter stops updating properly). Values reflect typical mecanum wheel
-   # slip uncertainty for a 4-wheel holonomic platform in simulation.
+   # Non-zero covariance diagonals: same rationale this project used for
+   # the old mecanum_drive_controller entry - all-zero covariance reads as
+   # infinite certainty to any consumer expecting a real covariance (e.g. an
+   # EKF), which is numerically degenerate. Not currently consumed by
+   # anything (ekf_node is disabled - see sim.launch.py), kept for parity/
+   # in case that changes.
    # Pose: [x, y, z, roll, pitch, yaw] - z/roll/pitch unused (two_d_mode)
-   twist_covariance_diagonal: [0.001, 0.001, 0.0, 0.0, 0.0, 0.005]
-   # Twist: [vx, vy, vz, vroll, vpitch, vyaw]
    pose_covariance_diagonal:  [0.001, 0.001, 0.0, 0.0, 0.0, 0.005]
+   # Twist: [vx, vy, vz, vroll, vpitch, vyaw]
+   twist_covariance_diagonal: [0.001, 0.001, 0.0, 0.0, 0.0, 0.005]
