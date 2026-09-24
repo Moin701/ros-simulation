@@ -52,74 +52,95 @@ Visualization Manager:
         Expand Joint Details: false
         Expand Link Details: false
         Expand Tree: false
+        LDS-01:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
         Link Tree Style: Links in Alphabetic Order
+        accelerometer:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
         base_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        cam_1_color_frame:
+        compass:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        cam_1_color_optical_frame:
+        gps:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        cam_1_depth_frame:
+        gyro:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        cam_1_depth_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        cam_1_infra1_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        cam_1_infra1_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        cam_1_infra2_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        cam_1_infra2_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        cam_1_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        caster_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         imu_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        laser_frame:
+        inertial_unit:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        left wheel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        left_wheel_link:
+        lower:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        right wheel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        right_wheel_link:
+        screw0:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
+        screw1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        screw2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        screw3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        solid:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sonar_back:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sonar_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sonar_left:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sonar_right:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
       Mass Properties:
         Inertia: false
         Mass: false
@@ -133,35 +154,51 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        LDS-01:
+          Value: true
+        accelerometer:
+          Value: true
+        base_footprint:
+          Value: true
         base_link:
           Value: true
-        cam_1_color_frame:
+        compass:
           Value: true
-        cam_1_color_optical_frame:
+        gps:
           Value: true
-        cam_1_depth_frame:
-          Value: true
-        cam_1_depth_optical_frame:
-          Value: true
-        cam_1_infra1_frame:
-          Value: true
-        cam_1_infra1_optical_frame:
-          Value: true
-        cam_1_infra2_frame:
-          Value: true
-        cam_1_infra2_optical_frame:
-          Value: true
-        cam_1_link:
-          Value: true
-        caster_wheel_link:
+        gyro:
           Value: true
         imu_link:
           Value: true
-        laser_frame:
+        inertial_unit:
           Value: true
-        left_wheel_link:
+        left wheel:
           Value: true
-        right_wheel_link:
+        lower:
+          Value: true
+        map:
+          Value: true
+        odom:
+          Value: true
+        right wheel:
+          Value: true
+        screw0:
+          Value: true
+        screw1:
+          Value: true
+        screw2:
+          Value: true
+        screw3:
+          Value: true
+        solid:
+          Value: true
+        sonar_back:
+          Value: true
+        sonar_front:
+          Value: true
+        sonar_left:
+          Value: true
+        sonar_right:
           Value: true
       Marker Scale: 0.30000001192092896
       Name: TF
@@ -169,29 +206,8 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        base_link:
-          cam_1_link:
-            cam_1_color_frame:
-              cam_1_color_optical_frame:
-                {}
-            cam_1_depth_frame:
-              cam_1_depth_optical_frame:
-                {}
-            cam_1_infra1_frame:
-              cam_1_infra1_optical_frame:
-                {}
-            cam_1_infra2_frame:
-              cam_1_infra2_optical_frame:
-                {}
-          caster_wheel_link:
-            {}
-          imu_link:
-            {}
-          laser_frame:
-            {}
-          left_wheel_link:
-            {}
-          right_wheel_link:
+        map:
+          odom:
             {}
       Update Interval: 0
       Value: true
@@ -229,10 +245,66 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 255; 0
+      Enabled: true
+      Head Diameter: 0.20000000298023224
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: GlobalPlan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 255; 0
+      Enabled: true
+      Head Diameter: 0.10000000149011612
+      Head Length: 0.05000000074505806
+      Length: 0.20000000298023224
+      Line Style: Lines
+      Line Width: 0.05000000074505806
+      Name: LocalPlan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 0; 255; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.05000000074505806
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_plan
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: base_link
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -247,25 +319,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 0.8651977181434631
+      Distance: 5.470846652984619
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
+        X: 0.8205339312553406
+        Y: -1.762499451637268
+        Z: 0.7929569482803345
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5950000286102295
+      Pitch: 1.1549994945526123
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 1.7949986457824707
+      Yaw: 2.979997396469116
     Saved: ~
 Window Geometry:
   Displays:

@@ -1,10 +1,19 @@
-"""Full Nav2 autonomy stack (Milestone 3): static map + AMCL localization,
-Smac global planning, DWB local control (nose-forward-only, matching the
-2WD + caster AMR's non-holonomic drive), and behavior/BT execution -
+"""Full Nav2 autonomy stack: static map + AMCL localization, Smac global
+planning, DWB local control (nose-forward-only, matching TurtleBot3
+Burger's non-holonomic diff-drive), and behavior/BT execution -
 coordinated by nav2_lifecycle_manager so every server comes up active
-automatically. Run alongside amr_simulation/sim.launch.py, which provides
-the odom -> base_link TF this whole stack depends on (published by
-rf2o_laser_odometry, not ekf_node - see rf2o_params.yaml's publish_tf)."""
+automatically. Run alongside amr_simulation/sim.launch.py.
+
+odom -> base_link TF comes from rf2o_laser_odometry (scan-matching), not
+diffdrive_controller's wheel encoders. TurtleBot3's diffdrive_controller
+still runs and still publishes wheel odometry on plain /odom, but its TF
+broadcast is disabled (enable_odom_tf: false in
+amr_simulation/config/ros2control.yaml) so only one node ever broadcasts
+odom->base_link. rf2o's own solver-failure handling was hardened earlier
+in this project (CLaserOdometry2DNode::process() now skips publish() and
+holds the last known pose on a failed convergence instead of republishing
+stale data under a fresh timestamp), so this reinstatement doesn't carry
+the same risk that motivated dropping RF2O when TurtleBot3 was integrated."""
 
 import os
 
@@ -23,6 +32,11 @@ def generate_launch_description():
     default_params_file = os.path.join(
         get_package_share_directory('amr_navigation'),
         'config', 'nav2_params.yaml'
+    )
+
+    default_nav_to_pose_bt_xml = os.path.join(
+        get_package_share_directory('amr_navigation'),
+        'behavior_trees', 'navigate_to_pose_w_replanning_and_recovery.xml'
     )
 
     map_server_node = Node(
@@ -78,7 +92,10 @@ def generate_launch_description():
         executable='bt_navigator',
         name='bt_navigator',
         output='screen',
-        parameters=[params_file, {'use_sim_time': use_sim_time}],
+        parameters=[params_file, {
+            'use_sim_time': use_sim_time,
+            'default_nav_to_pose_bt_xml': default_nav_to_pose_bt_xml,
+        }],
         ros_arguments=['--log-level', 'WARN'],
     )
 
@@ -102,37 +119,42 @@ def generate_launch_description():
         ],
     )
 
+    # CollisionMonitor: real nav2_util::LifecycleNode (confirmed via its
+    # header, nav2_collision_monitor/collision_monitor_node.hpp), needs
+    # lifecycle_manager bring-up like every other server here - added to
+    # node_names below. Sits after twist_mux (see sim.launch.py's
+    # twist_mux_node comment) as the last, source-agnostic safety net:
+    # reads the four sonar_* ultrasonic topics (nav2_collision_monitor's
+    # own dedicated "range" source type - its real header docstring reads
+    # "Implementation for IR/ultrasound range sensor source", built for
+    # exactly this) directly, independent of the costmap/planner entirely,
+    # and either slows or hard-stops whatever velocity twist_mux produced -
+    # from Nav2 OR teleop - before it ever reaches the driver. This is
+    # deliberately separate from nav2_params.yaml's local_costmap.
+    # range_layer (which feeds the SAME four sensors into the costmap for
+    # MPPI to plan around): that path is a normal planning input MPPI can
+    # weigh against other critics and route around, this one is a
+    # dedicated last-line reflex that can't be out-voted by path-following
+    # priorities.
+    collision_monitor_node = Node(
+        package='nav2_collision_monitor',
+        executable='collision_monitor',
+        name='collision_monitor',
+        output='screen',
+        parameters=[params_file, {'use_sim_time': use_sim_time}],
+    )
+
     # Classifies /cmd_vel_raw (controller_server's pre-mux output) into a
     # human-readable maneuver state, logged only on state change. Watches
-    # Nav2's own output specifically - it will not see teleop or
-    # lidar_docker's /cmd_vel_dock commands, since those are separate
-    # twist_mux input channels this node isn't subscribed to.
+    # Nav2's own output specifically - it will not see teleop's commands,
+    # since that's a separate twist_mux input channel this node isn't
+    # subscribed to.
     maneuver_telemetry_node = Node(
         package='amr_navigation',
         executable='maneuver_telemetry_node.py',
         name='maneuver_telemetry_node',
         output='screen',
         parameters=[{'use_sim_time': use_sim_time}],
-    )
-
-    lifecycle_manager_node = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_navigation',
-        output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'autostart': True,
-            'node_names': [
-                'map_server',
-                'amcl',
-                'planner_server',
-                'controller_server',
-                'behavior_server',
-                'bt_navigator',
-                'velocity_smoother',
-            ],
-        }],
     )
 
     rf2o_params_file = os.path.join(
@@ -151,19 +173,64 @@ def generate_launch_description():
 
     # RF2O's first scan callback looks up base_link -> laser_frame via TF
     # (CLaserOdometry2DNode.cpp's setLaserPoseFromTf(), called once on the
-    # first scan). If that lookup fails - a real race, since this launch
-    # file has no dependency on amr_simulation/sim.launch.py's
-    # robot_state_publisher actually being up yet - RF2O does NOT retry or
-    # abort: it silently continues with a garbage laser-to-base transform
-    # for the rest of the run (verified: no guard in CLaserOdometry2D::init,
-    # module_initialized is set unconditionally). A few seconds' delay
-    # gives robot_state_publisher's static TF time to propagate first.
+    # first scan) and does not retry or abort if that lookup fails - it
+    # silently continues with a garbage laser-to-base transform for the
+    # rest of the run. This launch file has no dependency on
+    # amr_simulation/sim.launch.py's robot_state_publisher actually being
+    # up yet, so a few seconds' delay gives its static TF time to
+    # propagate first.
     rf2o_node_delayed = TimerAction(period=3.0, actions=[rf2o_node])
+
+    lifecycle_manager_node = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_navigation',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'autostart': True,
+            # attempt_respawn_reconnection/bond_respawn_max_duration: real,
+            # confirmed-existing nav2_lifecycle_manager parameters (`strings`
+            # on libnav2_lifecycle_manager_core.so) kept as a harmless safety
+            # net - without this, a bond failure is unrecoverable by design
+            # (the library's own log strings are literally "CRITICAL
+            # FAILURE: SERVER %s IS DOWN ... Shutting down related nodes"
+            # with no automatic bring-up path; nav2 stays down until
+            # manually relaunched). With it enabled, a server that comes
+            # back within bond_respawn_max_duration is picked back up
+            # automatically instead. bond_timeout left at Nav2's own stock
+            # 4.0s default - unrelated to and unaffected by this.
+            'bond_respawn_max_duration': 10.0,
+            'attempt_respawn_reconnection': True,
+            'node_names': [
+                'map_server',
+                'amcl',
+                'planner_server',
+                'controller_server',
+                'behavior_server',
+                'bt_navigator',
+                'velocity_smoother',
+                'collision_monitor',
+            ],
+        }],
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'map',
-            default_value=os.path.expanduser('~/ros/maps/room_map.yaml'),
+            # amr_simulation/sim.launch.py spawns TurtleBot3 Burger inside
+            # this project's own simulation.wbt world (not
+            # webots_ros2_turtlebot's reference world), so this project's
+            # own pre-existing map - saved against that same wall layout -
+            # is the correct default again.
+            # room_map_hires.yaml: same walls, same 3.10m x 2.55m extents,
+            # same origin as room_map.yaml - just 0.025 m/px instead of
+            # 0.05. StaticLayer forces the global costmap to the map's
+            # resolution, so this is the only way to give the global planner
+            # a grid fine enough to resolve this layout's 353mm passages.
+            # See that file's header for the full reasoning; point this back
+            # at room_map.yaml to revert.
+            default_value=os.path.expanduser('~/ros/maps/room_map_hires.yaml'),
             description='Full path to the saved map yaml file'
         ),
         DeclareLaunchArgument(
@@ -185,6 +252,7 @@ def generate_launch_description():
         behavior_server_node,
         bt_navigator_node,
         velocity_smoother_node,
+        collision_monitor_node,
         maneuver_telemetry_node,
         lifecycle_manager_node,
     ])

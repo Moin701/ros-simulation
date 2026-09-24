@@ -5,10 +5,6 @@ twist_mux:
         topic: "/cmd_vel_teleop"
         timeout: 0.5
         priority: 100
-      docking:
-        topic: "/cmd_vel_dock"
-        timeout: 0.5
-        priority: 50
       navigation:
         # Now routes through velocity_smoother's output, not controller_server's
         # raw /cmd_vel_raw directly - see navigation.launch.py's velocity_smoother_node.

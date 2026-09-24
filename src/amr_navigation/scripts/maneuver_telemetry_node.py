@@ -24,9 +24,22 @@ def classify(vx: float, w: float) -> str:
 
 
 class ManeuverTelemetryNode(Node):
+    # Decision D (narrow-passage-navigation-fix-brief.md): a recovery-loop
+    # storm doesn't just fail to progress, it also thrashes classify()
+    # between states almost every /cmd_vel_raw message (IN_PLACE_SPIN <->
+    # TRANSITIONING <-> IDLE_STATIONARY, observed live at close to
+    # controller_frequency itself), and this node already logs on every
+    # state CHANGE - so during exactly the failure this brief exists to
+    # fix, that becomes a near-every-cycle flood, adding real I/O load on
+    # top of a system that's already struggling. A minimum interval between
+    # log lines caps that without losing the substantive signal (the
+    # current state is still reported, just not faster than this).
+    MIN_LOG_INTERVAL_S = 0.3
+
     def __init__(self):
         super().__init__('maneuver_telemetry_node')
         self.last_maneuver = None
+        self.last_log_time = None
         self.create_subscription(Twist, '/cmd_vel_raw', self._cmd_vel_callback, 10)
 
     def _cmd_vel_callback(self, msg: Twist) -> None:
@@ -35,8 +48,14 @@ class ManeuverTelemetryNode(Node):
         w = msg.angular.z
 
         state = classify(vx, w)
-        if state != self.last_maneuver:
+        now = self.get_clock().now()
+        due = (
+            self.last_log_time is None
+            or (now - self.last_log_time).nanoseconds / 1e9 >= self.MIN_LOG_INTERVAL_S
+        )
+        if state != self.last_maneuver and due:
             self.last_maneuver = state
+            self.last_log_time = now
             self.get_logger().info(
                 f"[MANEUVER TELEMETRY] Active State: {state} | vx={vx:.2f} m/s, w={w:.2f} rad/s"
             )

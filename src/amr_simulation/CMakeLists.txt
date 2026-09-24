@@ -4,7 +4,7 @@ project(amr_simulation)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY launch webots config
+  DIRECTORY launch webots config resource
   DESTINATION share/${PROJECT_NAME}
 )
 

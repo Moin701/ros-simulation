@@ -4,7 +4,7 @@ project(amr_navigation)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY launch config scripts
+  DIRECTORY launch config scripts behavior_trees
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -14,8 +14,8 @@ install(
     scripts/sensor_wrapper_node.py
     scripts/aruco_detector.py
     scripts/visual_docker.py
-    scripts/lidar_docker.py
     scripts/maneuver_telemetry_node.py
+    scripts/calibrate_inflation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

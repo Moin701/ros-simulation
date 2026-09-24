@@ -88,7 +88,7 @@ controller_manager
                                  (NOT /cmd_vel — see decisions-and-gotchas.md)
 
 twist_mux (Multiplexer)
-  in:  /cmd_vel_nav (Nav2, priority 10), /cmd_vel_dock (Lidar Docker, priority 20), /cmd_vel_teleop (Keyboard, priority 100)
+  in:  /cmd_vel_nav (Nav2, priority 10), /cmd_vel_teleop (Keyboard, priority 100)
   out: /mecanum_drive_controller/reference_unstamped
 
 Native Webots devices (via <webots> block in sim_control.urdf.xacro):

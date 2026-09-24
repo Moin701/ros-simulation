@@ -464,3 +464,1052 @@ Saved maps go to `~/ros/maps/` (e.g. `~/ros/maps/room_map.yaml` +
 This is a project-specific choice, not a Nav2 default — some
 generic instructions elsewhere may say `~/map_files/`; that directory
 does not exist in this project.
+
+## TurtleBot3 correction round: own world, RF2O reinstated
+
+Right after the first TurtleBot3 integration pass (see the "Migrated to
+TurtleBot3 Burger" section above), a follow-up review caught two real
+problems with it and asked for a fix. Both were verified independently
+against source before applying, and one of the review's own proposed
+fixes turned out to use a wrong parameter name.
+
+**Problem 1 — wrong world was loading.** `sim.launch.py` originally
+`IncludeLaunchDescription`d `webots_ros2_turtlebot`'s own `robot_launch.py`
+verbatim, which defaults its `world` argument to
+`turtlebot3_burger_example.wbt` and never gets that argument overridden.
+Result: Webots was silently loading ROBOTIS's reference apartment, not
+this project's own `simulation.wbt` (walls, AprilTags, docking corridor).
+Fixed by forking `robot_launch.py`'s logic into `sim.launch.py` (see that
+file's own docstring for the full rationale) and pointing `WebotsLauncher`
+at `amr_simulation/webots/worlds/simulation.wbt` directly. Confirmed via
+`inspect.getsource` on `launch.substitutions.path_join_substitution` that
+`PathJoinSubstitution.perform()` joins with `str(Path(*components))` —
+unlike `os.path.join`, `pathlib.Path` does **not** drop earlier components
+when a later one is absolute, so passing an absolute world path as a
+launch argument would NOT have worked without the fork anyway.
+`simulation.wbt` itself needed the real `TurtleBot3Burger` PROTO added
+(EXTERNPROTO'd from `cyberbotics/webots` at the `R2025a` tag, matching
+this world's existing pin — verified both new proto URLs resolve at that
+tag before using them) in place of the fully-dead `amr_robot` PROTO from
+the earlier rmp_bot migration, with its `extensionSlot` (imu_link Solid,
+GPS, InertialUnit, RobotisLds01) copied verbatim from ROBOTIS's own
+reference world — the `RobotisLds01` slot specifically is what makes
+`/scan` exist at all; `turtlebot_webots.urdf`'s device bindings expect
+exactly that sensor set. `navigation.launch.py`'s `map` default was
+reverted from `webots_ros2_turtlebot`'s bundled map back to this project's
+own `~/ros/maps/room_map.yaml`, since we're spawning in our own world
+again.
+
+**Problem 2 — RF2O reinstated as the odom TF authority, not wheel
+encoders.** The review argued rf2o's scan-matching odometry is more
+reliable than wheel-encoder odometry for this setup and should be
+authoritative again. Two of its proposed parameter values were checked
+against real source and were wrong:
+  - It said to set `publish_odom_tf: false` on `diffdrive_controller`.
+    The real compiled parameter (confirmed via
+    `diff_drive_controller_parameters.hpp`) is `enable_odom_tf`, not
+    `publish_odom_tf`.
+  - It said to set rf2o's `base_frame_id` to `"base_footprint"`. rf2o's
+    own compiled default (confirmed via `CLaserOdometry2DNode.cpp`) is
+    `"base_link"`, which is also what every other frame setting in
+    `nav2_params.yaml`/`amcl.yaml` already uses — `base_footprint` only
+    exists as a static zero-offset TF child of `base_link`, so pointing
+    rf2o at it directly would have added an unnecessary extra TF hop for
+    no benefit.
+Since `diffdrive_controller`'s `ros2control.yml` is installed and has no
+launch argument to override its path, disabling `enable_odom_tf` required
+a project-owned copy: `amr_simulation/config/ros2control.yaml` (identical
+to the installed file plus that one line), loaded by the forked
+`sim.launch.py` instead of the installed one — the second reason that
+fork was necessary. `rf2o_laser_odometry` was re-added to
+`navigation.launch.py` with the exact same `TimerAction(period=3.0, ...)`
+delay pattern used for it earlier in this project (a real, previously
+diagnosed race: rf2o's one-shot `base_link -> laser_frame` TF lookup on
+its first scan callback does not retry on failure), and
+`nav2_params.yaml`'s three `odom_topic` settings were pointed back at
+`/odom_rf2o`. Plain `/odom` (wheel encoders) is still published by
+`diffdrive_controller` — only its TF broadcast is now disabled — so
+nothing downstream actually reads it; it's there for comparison/debugging
+only. This reinstatement is safer than it would have been earlier in this
+project: the actual rf2o bug that originally caused stale-pose
+republishing and recovery-loop oscillation
+(`CLaserOdometry2DNode::process()` ignoring `odometryCalculation()`'s
+return value) was fixed and committed before TurtleBot3 was ever
+integrated, so that specific failure mode does not reappear here.
+
+## Lidar Docker removed (visual/ArUco docking kept)
+
+`amr_navigation/scripts/lidar_docker.py` — the reactive lidar-only
+U-turn/docking controller — was removed completely at the user's request:
+the script itself, its `CMakeLists.txt` install entry, its `Node` in
+`sim.launch.py` (plus that file's header/twist_mux comments referencing
+it), the now-unused `docking` channel in `twist_mux.yaml`
+(`/cmd_vel_dock`, priority 50 — nothing else published to it), and the
+mentions in `navigation.launch.py`'s comments, `architecture.md`, and the
+Nav2 BT XML comment. One historical mention survives deliberately in this
+file's "Twist Multiplexing" entry above — that's a record of the old
+mecanum-era architecture (which also references
+`/mecanum_drive_controller`, itself long gone), not live documentation,
+so it wasn't rewritten, the same way git history isn't rewritten.
+
+**`visual_docker.py`/`aruco_detector.py` (the separate ArUco-tag-based
+docking system) were left untouched** — "Lidar Docker" and "visual
+docking" are two independent systems that happened to share the word
+"docking"; only the former was asked to go. Worth knowing if either is
+touched again: `visual_docker.py` publishes straight to `/cmd_vel`,
+bypassing `twist_mux` entirely — a pre-existing oddity, not something
+this removal introduced or fixed.
+
+## Narrow-passage navigation failure: wrong lever, then the real fix
+
+The robot could not thread this layout's narrow passages (353mm being the
+tightest — see the AS2/AS3/AS1 layout drawing, 3000x2500mm overall,
+confirmed matching `maps/room_map.pgm`'s 62x51px @ 0.05m/px = 3.10m x
+2.55m). Symptom in `maneuver_telemetry_node`'s log: `RECOVER_BACKUP` ->
+`IN_PLACE_SPIN` -> `TRANSITIONING` looping indefinitely at the passage
+mouth — recovery returning the robot to the exact geometry that just
+failed, forever.
+
+**First attempt (wrong): lowering `inflation_radius`/`cost_scaling_factor`
+on both costmaps, repeatedly, across several tuning passes.** This could
+never have worked, and the reasoning behind it was corrected once checked
+against real behavior. `nav2_costmap_2d::InflationLayer` unconditionally
+stamps every cell within the robot's *inscribed radius* (0.1m, from
+`robot_radius` + `footprint_padding: 0.0`) as
+`INSCRIBED_INFLATED_OBSTACLE = 253`, and `SmacPlanner2D` treats 253 as
+untraversable — full stop, regardless of `inflation_radius` or
+`cost_scaling_factor`, which only shape the cost gradient *beyond* that
+253 core. Successive reductions (0.12 -> 0.10 -> 0.08 -> 0.06) were tuning
+a parameter that does not govern the actual obstruction, and 0.06 was
+actively worse: below the inscribed radius, it produced no useful
+guidance gradient at all while still tripping nav2's own "configured
+inflation radius is smaller than the computed inscribed radius" warning.
+Lesson for next time: check what a parameter *actually gates* (via
+`strings` on the real `.so`, as always in this file) before assuming a
+plausible-sounding knob controls the symptom.
+
+**Real root cause: costmap resolution, not inflation.** The traversable
+band through a passage is `passage_width - 2*inscribed_radius`, fixed by
+robot geometry and not reducible by inflation tuning at all. For the
+353mm passage that's 153mm — at the map's native 0.05m/px, that's ~3.1
+grid cells, and grid misalignment routinely rounds that down to 2 or 0
+cells of connectivity, which is exactly what was failing. Compounding
+this: `nav2_costmap_2d::StaticLayer` unconditionally forces the *global*
+costmap to adopt the loaded map's own resolution ("StaticLayer: Resizing
+costmap to %d X %d at %f m/pix", confirmed via `strings` on
+`liblayers.so`) — so `global_costmap.resolution` in `nav2_params.yaml` was
+silently a no-op the whole time; the only way to change it is to change
+the map itself.
+
+Fix: generated `maps/room_map_hires.pgm`/`.yaml` — a 2x nearest-neighbour
+upsample of `room_map.pgm` (PIL `Image.NEAREST`, no interpolation, so
+occupancy values are preserved exactly; pixel histogram is exactly 4x the
+original's, same 3.10m x 2.55m extents, same origin) at 0.025m/px instead
+of 0.05m/px. `navigation.launch.py`'s `map` launch argument default now
+points here instead of `room_map.yaml` (which is untouched — point the
+argument back to revert). `local_costmap.resolution` was set to 0.025
+directly in `nav2_params.yaml` (no static layer involved there, so this
+one *is* authoritative). At the new resolution the same 153mm band is
+~6.1 cells — an actual corridor to route through instead of a coin-flip.
+`planner_server.GridBased.downsample_costmap` was explicitly pinned
+`false` (a real `SmacPlanner2D` parameter, confirmed via `strings` on
+`libnav2_smac_planner_2d.so`) so the planner can't quietly throw away that
+resolution gain on its own. `cost_travel_multiplier` was also lowered
+2.0 -> 1.0: at the old value the planner would rather detour around a
+passage than accept the cost of threading it, which is backwards when
+threading it is the only way through.
+
+**Controller swap: DWB -> MPPI, since DWB's failure mode here is
+structural, not a tuning problem.** `dwb_core::DWBLocalPlanner` scores a
+coarse *discrete* grid of `(vx, vtheta)` sample pairs (20 x 35 in this
+project's tuning) and rejects any whose swept cells are too costly. In an
+11cm-wide free corridor, the lateral spread between adjacent DWB samples
+at any useful speed is often wider than the corridor itself — whole
+regions of the sample grid land in the inflated band simultaneously, DWB
+finds zero admissible rollouts, and `controller_server` reports failure,
+which is what was driving the backup/spin recovery loop. Switched the
+active `FollowPath` to `nav2_mppi_controller::MPPIController` (confirmed
+installed: `libmppi_controller.so`/`libmppi_critics.so`; every parameter
+name and critic below was read directly off those two libraries, and
+`"DiffDrive"` confirmed as a literal valid `motion_model` string via the
+library's own validation message). MPPI samples a large *stochastic*
+batch (2000 rollouts) around the previous optimal control sequence and
+returns a cost-weighted average rather than picking one discrete winner,
+so it degrades gracefully in a corridor where most samples are poor
+instead of failing outright when all of them are. `dwb_core::
+DWBLocalPlanner` is preserved, unchanged, as `FollowPathDWB` (not in
+`controller_plugins`, so inactive) — swap the two block names back to
+revert. `nav2_regulated_pure_pursuit_controller` remains preserved as
+`FollowPathRPP` from an earlier pass, also inactive, for the same reason
+(see this file's earlier Nav2-stack entries for why RPP itself was
+originally swapped out).
+
+MPPI's critics carry forward two earlier, still-standing requests from
+this project: `vx_max`/`wz_max` (0.35 / 0.6) keep "straight-line can move
+at normal speed, rotation should be slow" from the DWB-era tuning, and
+`TwirlingCritic` carries forward "prefer straight-line commands over
+curvier alternatives" the same way it was added (then, alongside DWB,
+temporarily reverted mid-session) before landing here on MPPI instead.
+`CostCritic` (not `ObstaclesCritic`) was chosen deliberately: `Obstacles
+Critic` reconstructs distance-to-obstacle by inverting the inflation
+formula, which requires its own `inflation_radius`/`cost_scaling_factor`
+copies to exactly mirror the costmap's — a fragile coupling in a file that
+retunes inflation often. `CostCritic` scores the costmap value directly,
+so it stays correct through future inflation changes without needing a
+second copy of those numbers.
+
+## Goal-reaching tolerance loosened (was hunting forever near the goal)
+
+`nav2_controller::SimpleGoalChecker` (confirmed via `strings` on
+`libsimple_goal_checker.so` — only `.xy_goal_tolerance`/
+`.yaw_goal_tolerance`/`.stateful` exist, no velocity check at all) only
+reports the goal reached once position AND yaw are *simultaneously* within
+tolerance. At the original 8cm/~8.6°, the robot would reach the position
+window easily but then spend a long time making small in-place
+corrections chasing the last few degrees of exact final heading —
+visibly "stuck" spinning right next to the goal instead of ever
+completing. Loosened both `general_goal_checker` and `FollowPath`'s own
+copy (the two must match, per this file's — and the params file's own —
+existing comment) to `xy_goal_tolerance: 0.15` / `yaw_goal_tolerance:
+0.35` (~20°), so "close enough" actually registers as SUCCEEDED.
+
+## Angular speed halved, linear speed untouched
+
+Per a direct request ("really really slow" turning, straight-line motion
+can stay at normal speed): every rotational-speed ceiling in the stack
+was cut roughly in half, while every linear (x) limit was left exactly as
+it was. Touches three independent places that all needed to move
+together for a consistent feel: the active local controller's own angular
+ceiling and accel/decel (`wz_max`/equivalent), `velocity_smoother`'s theta
+entries in its `max_velocity`/`min_velocity`/`max_accel`/`max_decel`
+arrays (the x entries in those same arrays are untouched), and
+`behavior_server.spin`'s `max_rotational_vel`/`rotational_acc_lim` (the
+Spin recovery behavior's own separate rotational speed — not read from
+the controller's params at all, easy to forget as a fourth place). If
+rotation speed is ever retuned again, check all three/four spots, not
+just the local controller's block — this project has already been bitten
+once by `velocity_smoother`'s ceiling silently overriding a tighter
+controller-side limit.
+
+## Global costmap ignoring live LIDAR clearing near the robot's own pose
+
+A real, live-diagnosed failure: the robot sat completely motionless while
+`planner_server` repeated `"Starting point in lethal space! Cannot create
+feasible plan"` indefinitely, yet in the same instant `Spin` completed a
+full rotation and `BackUp` began moving - both without any collision
+refusal from their own live local-costmap check. That split is the
+diagnostic signature: `local_costmap` has no `static_layer` (pure live
+LIDAR, see its `plugins` list), but `global_costmap` layers `static_layer`
+(the pre-built map) under `obstacle_layer` (live LIDAR) and combines them
+via `combination_method: 1` (Max, the default) - so a cell `static_layer`
+marked as wall stays lethal forever even when the live scan's clearing
+ray-traces straight through it and proves it's clear right now
+(`max(clear, wall)` is still `wall`). A centimeter or two of map-to-reality
+drift is enough to pin a cell like that in a passage this tight, and
+neither `ClearEntireCostmap` nor any inflation setting fixes it -
+`static_layer`'s own content isn't touched by a costmap clear, and the
+cell in question was never a soft decay value to begin with.
+
+**Fix: `global_costmap.obstacle_layer.combination_method: 0`
+(Overwrite)** - confirmed real parameter via `strings` on `liblayers.so`.
+Now the live scan's own clearing can overwrite a stale static-map wall
+cell instead of only ever being able to raise its cost. Cells the current
+scan doesn't observe this cycle are untouched either way, so a wall
+genuinely outside the LIDAR's current view still comes from
+`static_layer` unaffected. This is the standard, documented Nav2 lever
+for "trust the live sensor over the pre-built map" - unlike
+`inflation_radius`/`cost_scaling_factor`, which cannot help here at all,
+since the blocking cell was the static map's own hard entry, never a soft
+gradient.
+
+Also corrected in the same pass: a stale comment on `behavior_server.spin`
+described the OLD rectangular mecanum chassis's swept-corner risk. This
+robot's costmaps declare it with a plain `robot_radius` (circular, no
+footprint polygon anywhere in this file) - a circle rotated about its own
+center sweeps exactly the disk it already occupies at rest, so in-place
+rotation adds zero additional collision exposure for this robot,
+unlike the old chassis. And `BackUp`'s BT-side distance/speed
+(`backup_dist`/`backup_speed` in the navigate-to-pose BT XML) was
+right-sized from an oversized 0.30m/0.05m/s down to Nav2's own stock
+default, 0.15m/0.025m/s - the larger distance routinely exceeded real
+available clearance in this layout's tight corridors, so `BackUp` would
+immediately re-trigger its own collision check (`Collision Ahead -
+Exiting DriveOnHeading`, confirmed real live-firing log line via `strings`
+on `libnav2_back_up_behavior.so`) and exit having moved almost nothing -
+which read externally as "recovery not coming back from it," when the
+recovery behaviors were in fact correctly refusing to make a bad position
+worse.
+
+## Ultrasonic proximity sensors added (LIDAR minimum-range blind spot)
+
+The 2D LIDAR (`RobotisLds01`/`LDS-01`) has a minimum reliable detection
+range that leaves it blind to obstacles very close to the robot's own
+body - exactly the regime this layout's narrowest passages (down to
+153-160mm of real free centerline, see the "Narrow-passage navigation
+failure" entry above) push the robot into. Four Webots `DistanceSensor`
+nodes (`sonar_front`/`sonar_left`/`sonar_back`/`sonar_right`) were added
+to `simulation.wbt`'s `TurtleBot3Burger.extensionSlot`, mounted flush with
+the robot's 0.1m hull radius at the front/left/back/right compass points
+(the chassis is circular, not rectangular, so this is the closest real
+equivalent to "four corners" - real blind spots remain at the diagonals,
+an honest coverage gap, not something four sensors at 90 degrees apart
+closes).
+
+A user-supplied integration plan for this (from an external source, not
+verified against this project's actual installed packages) was checked
+against real source before implementing, and two of its claims were
+wrong:
+- It specified `radiation_type: ULTRASOUND` for the published
+  `sensor_msgs/Range` messages. Confirmed via reading
+  `webots_ros2_driver`'s own `Ros2DistanceSensor.cpp` directly: it
+  hardcodes `sensor_msgs::msg::Range::INFRARED` regardless of the Webots
+  node's own `type` field. Cosmetic only -
+  `nav2_costmap_2d::RangeSensorLayer` never reads `radiation_type` - but a
+  real inaccuracy in what actually gets published, worth knowing if
+  anything downstream ever branches on it.
+- It listed `phi: 0.26` as a `RangeSensorLayer` YAML parameter. Confirmed
+  via `strings` on `liblayers.so` that no such top-level parameter exists
+  - the layer's internal `phi_v_` comes from each incoming
+  `sensor_msgs/Range` message's own `field_of_view` field at runtime, not
+  a static config value. Left out of `nav2_params.yaml`'s `range_layer`
+  block entirely rather than setting a parameter that does nothing.
+- It also assumed this project's `amr_description/urdf` xacro ->
+  `urdf2webots` -> `fix_proto.py` -> `amr_robot.proto` pipeline
+  (`proto-regeneration.md`) was the way to get new sensors into the
+  simulation. That pipeline targets `amr_robot.proto`, which
+  `simulation.wbt` has not referenced at all since the TurtleBot3 pivot -
+  Webots now spawns `TurtleBot3Burger`, cyberbotics' own external PROTO
+  (see the "TurtleBot3 correction round" entry above). Running that
+  pipeline for this would have regenerated a file Webots never loads.
+  Confirmed instead (`WebotsNode.cpp`'s device-type switch) that
+  `webots_ros2_driver` auto-instantiates a `Ros2DistanceSensor` plugin for
+  *every* `WB_NODE_DISTANCE_SENSOR` device found on the robot with zero
+  `<device>` XML entry required at all - adding the sensors directly to
+  `simulation.wbt`'s `extensionSlot` (the same place `imu_link`/`GPS`/
+  `RobotisLds01` already live) is the actual, current mechanism, no xacro
+  or PROTO regeneration involved.
+
+Real min/max range and field-of-view come from the Webots node's own
+`lookupTable`/`aperture` fields (set in `simulation.wbt`), not from any
+ROS-side parameter - `sensor_msgs/Range.min_range`/`max_range` are
+*derived* by `Ros2DistanceSensor.cpp` from the lookup table's endpoints
+adjusted by their noise margins, not independently settable.
+
+Topic names (`/ultrasonic/front` etc.) needed a fork of
+`webots_ros2_turtlebot`'s installed `resource/turtlebot_webots.urdf` into
+`amr_simulation/resource/turtlebot_webots.urdf` (same "can't edit an
+installed third-party file in place" situation `ros2control.yaml` hit
+earlier in this project) purely to override each sensor's default
+`"~/<device_name>"` topic (which resolves relative to the driver node's
+own name) with an explicit, predictable absolute path -
+`sim.launch.py`'s `robot_description_path` now points at this fork
+instead of `webots_ros2_turtlebot`'s copy.
+
+`nav2_costmap_2d::RangeSensorLayer` was added to `local_costmap.plugins`
+only (not `global_costmap` - a sensor with a 0.5m max range has nothing
+useful to contribute to long-horizon global planning), ordered before
+`inflation_layer` so inflation is computed over the combined obstacle +
+range-sensor picture. This closes the LIDAR blind spot at the costmap
+level, which is what actually produces the "slow down near walls"
+behavior requested: MPPI's existing `CostCritic`/`ConstraintCritic`
+already penalize proximity to costed cells, so newly-marked close-range
+obstacles feed into the same scoring that already exists - no separate,
+bespoke speed-governor logic was needed or added.
+
+## Ultrasonic sensor range corrected + nav2_collision_monitor added
+
+Two follow-ups after the ultrasonic sensors above went in:
+
+**Range was wrong by an order of magnitude.** The initial `lookupTable`
+used a 0.02-0.5m range (matching the earlier general "close-range" ask),
+but 0.5m is deep into LIDAR's own good working range and, in a
+350-460mm-wide passage, reaches clean across to the far wall - visually
+indistinguishable from a second LIDAR, not a hull-hugging proximity
+sensor. Live-diagnosed from a screenshot showing the sensor's debug rays
+stretching far past the robot's body. Shrunk to 0.01-0.08m (real few-cm
+range) on all four `sonar_*` nodes in `simulation.wbt` - deliberately
+small enough to stay irrelevant everywhere except genuinely close to a
+wall, so it can never compete with or override LIDAR-based planning in
+open space. The 0.1m-from-centre mounting height/position was NOT a bug -
+checked against a real cached `TurtleBot3Burger` PROTO
+(`.../webots_ros2_examples/protos/TurtleBot3Burger_enu.proto` found
+locally) and its own body geometry centres almost exactly on the z=0.08
+height already used here.
+
+**`nav2_collision_monitor` added as a dedicated safety layer** - a
+different mechanism from `local_costmap.range_layer` above, and a real,
+separate request: "maintain constant clearance, and if it gets
+dangerously close, react immediately" describes an independent reflex
+that can't be out-voted by path-following priorities, not another input
+for MPPI's critics to weigh. Confirmed installed
+(`nav2_collision_monitor/collision_monitor_node.hpp`) with a purpose-built
+`Range` source type for this exact sensor class (its own header docstring
+reads "Implementation for IR/ultrasound range sensor source"). Wired in
+as the actual last stage before the robot: `sim.launch.py`'s `twist_mux`
+now outputs to `/cmd_vel_premonitor` instead of `/cmd_vel` directly, and
+`collision_monitor` (launched in `navigation.launch.py`, added to
+`lifecycle_manager_navigation`'s `node_names`) reads that and republishes
+the real final `/cmd_vel` - deliberately spliced in AFTER twist_mux, not
+before, so it sees and can override teleop commands too, not just Nav2's.
+
+Two `circle`-type zones (matching this robot's real circular
+`robot_radius`, not an arbitrary rectangle): `CollisionStop` at radius
+0.12 (robot_radius 0.1 + 2cm - "if it moves another few cm, collision has
+to occur," as directly requested) hard-stops via `action_type: "stop"`;
+`CollisionSlow` at radius 0.16 (robot_radius + 6cm) reduces speed to 30%
+via `action_type: "slowdown"`. Both radii are measured from `base_link`
+(the zone is centred on the robot, not the hull surface), and both sit
+comfortably inside the sensors' own 0.08m max range so an approach can
+actually be detected before either boundary is crossed.
+
+## Robot stalled completely: local_costmap resolution was the real cost driver
+
+After the ultrasonic sensors/`collision_monitor` went in, the robot
+stopped making any real progress: `controller_server` spammed `"Control
+loop missed its desired rate of 20.0000Hz"` on nearly every cycle, its
+own `local_costmap/clear_entirely_local_costmap` service started timing
+out (the node starving its own callbacks, not just the control loop
+timer), and `"Failed to make progress"` aborted paths repeatedly.
+
+**First fix, insufficient alone: `slowdown_ratio: 0.3` on
+`CollisionSlow` was compounding with MPPI's own caution.** In this
+layout's passages, even perfect centering only clears 7.65cm per side -
+this slowdown zone (triggers under 6cm) is active for nearly the entire
+time the robot is inside any of them, by design. But MPPI's own
+`CostCritic`/`ConstraintCritic` were ALREADY slowing it down for the same
+proximity, and multiplying an already-small commanded velocity by 0.3
+routinely landed below `controller_server.min_x_velocity_threshold`
+(0.01), which zeroes it outright - the robot would sit motionless inside
+a zone it couldn't escape, then fail `progress_checker`'s
+movement-in-time check. Raised to 0.6 (a real but much milder cut) - this
+alone did not fix the "missed its desired rate" spam, which turned out to
+be a separate, bigger problem.
+
+**Real cause: `local_costmap.resolution: 0.025` was never actually
+needed and was the biggest new compute cost.** That value was set to fix
+`SmacPlanner2D`'s GLOBAL grid-search feasibility through 353mm passages
+(see the "Narrow-passage navigation failure" entry above) - correct
+reasoning there, but it was mistakenly carried over to the LOCAL costmap
+under the same logic, which never applied: MPPI doesn't grid-search, it
+scores continuous-space trajectories against costmap values, and 5cm
+cells are already several times finer than this layout's ~7.65cm
+worst-case clearance margin. What 0.025 actually cost: a 3x3m rolling
+window at that resolution is 14400 cells vs 3600 at 0.05 - a real 4x
+increase in what `inflation_layer`/`range_layer` recompute on every
+costmap update, all inside `controller_server`'s own single-threaded
+executor (confirmed no configurable multi-threaded executor exists for
+this Humble build - checked `strings` on the installed `controller_server`
+binary and `libcontroller_server_core.so`, neither declares an
+`executor_type`/`num_threads` parameter - this is not a flag being
+missed, it genuinely isn't available here). That executor is the SAME
+thread MPPI's rollouts run on, so the 4x-larger costmap recompute was
+starving the control loop timer AND the node's own service callbacks.
+Reverted to 0.05. MPPI's `batch_size` (2000 -> 1000 -> 500) and
+`time_steps` (56 -> 36) were also cut alongside this, since halving
+batch_size alone (2000 -> 1000, done first, before the resolution cause
+was found) did not clear the warnings by itself.
+
+Lesson for next time: when a resolution/fidelity increase is justified
+for one specific reason (here, a discrete grid-search planner needing
+enough connected cells), check whether that reasoning actually extends to
+every place the same-sounding parameter exists (here, local vs global
+costmap) before copying the value across - it does not automatically
+transfer to a different consumer with a different algorithm.
+
+## Spin's rotation speed was silently ignored: wrong YAML nesting
+
+Live-diagnosed via `ros2 param get /behavior_server spin.max_rotational_vel`
+returning `"Parameter not set"`, then `ros2 param list /behavior_server`
+showing `max_rotational_vel`, `min_rotational_vel`, `rotational_acc_lim`,
+and `simulate_ahead_time` all existing ONLY as top-level
+`behavior_server` parameters - not nested under `spin:`/`backup:` as this
+file previously claimed ("every per-behavior TimedBehavior parameter
+follows this nesting convention, same as progress_checker/
+general_goal_checker" - that claim was wrong, and had never been checked
+against the actually-running node's real parameter list, only inferred
+from `strings` on the plugin library, which confirms a parameter *name*
+exists but says nothing about what prefix it's declared under). This
+installed `nav2_behaviors` version declares these four without a
+per-plugin prefix, shared across whichever behaviors use them (Spin's own
+rotation speed; `simulate_ahead_time` shared by Spin/BackUp/
+DriveOnHeading's common `CostmapTopicCollisionChecker` ahead-check -
+confirmed all three link against that same class). The nested copies
+under `spin:`/`backup:` had been silently ignored for most of this
+project's history - Spin ran on its compiled default (observed live:
+`w=1.00 rad/s`) regardless of what the file said, right up until this
+was caught.
+
+Moved all four to the real top level of `behavior_server.ros__parameters`.
+General lesson, worth repeating given this is the second time it's bitten
+this exact project: `strings` on a compiled plugin proves a parameter
+*name* is real, but not where in the YAML hierarchy it's actually read
+from - `ros2 param list`/`ros2 param get` against the live, running node
+is the only way to confirm the second part, and should be checked
+whenever a "why isn't this taking effect" symptom shows up, not assumed
+from naming convention alone.
+
+## Control loop's real rate ceiling was range_layer, not the LIDAR
+
+`controller_frequency: 20.0` was live-measured (off the "Control loop
+missed its desired rate of 20.0000Hz" warning's own timestamps) to be
+only actually achieving 4.33Hz - the minimum gap between consecutive
+warnings was 0.231s. The first hypothesis was that this matched the
+Webots LDS-01's own measured 4.45Hz `/scan` rate (see rf2o_params.yaml's
+`freq: 4.0` reasoning) and that the control loop simply couldn't outrun
+its own pose source - `controller_frequency` was set to 5.0 and MPPI's
+`model_dt`/`time_steps`/`batch_size` rebuilt around that on that theory.
+
+That theory was wrong, caught by testing rather than assumed correct:
+live-set `controller_frequency` to 10.0 via `ros2 param set` and measured
+`/cmd_vel_raw` at exactly 10.001Hz with **zero** missed-rate warnings over
+a 40-second window. The real cause was `local_costmap.range_layer` -
+four sonar topic subscriptions plus per-scan cone-marking, recomputed
+every cycle on `controller_server`'s own single-threaded executor (the
+same one MPPI's rollouts run on - see the "Robot stalled completely"
+entry above for why no multi-threaded executor exists here to absorb
+that cost). Removing `range_layer` from `local_costmap.plugins` freed
+the loop entirely; `controller_frequency: 10.0` is the value actually
+running now (twice the ~4.5Hz pose rate - fast enough that a lost cycle
+still gets a fresh pose reading soon after, not so fast that it just
+re-consumes the same rf2o pose several times for nothing). `model_dt`
+was corrected to `0.1` (== `1/controller_frequency` - this MUST always
+hold, see below) and `time_steps` to `28` (same ~2.8s/~1m horizon as
+before, resampled at the corrected step size).
+
+The sonar readings didn't disappear - they still feed
+`nav2_collision_monitor` directly (see below), which was always the
+correct consumer for a sub-robot-radius-range sensor; this only removes
+them from the costmap MARKING path, which - separately - turned out to
+be actively harmful (next entry).
+
+Lesson: measure before committing to a theory that "explains" a number,
+even a plausible one backed by a real, previously-confirmed fact (the
+LIDAR rate). `ros2 param set` on a live node costs nothing to try before
+rewriting a config file around an assumption.
+
+## MPPI's model_dt must equal 1/controller_frequency, always
+
+`FollowPath.model_dt` is the time-step MPPI integrates each rollout with
+internally - it is not a free tuning knob, it must equal the actual
+control period the optimizer's first command will be held for. This was
+left at a stale `0.05` while `controller_frequency` moved 20 -> 5 -> 10
+(effective real rate 4.33 -> 5 -> 10Hz across this debugging session),
+meaning for most of that time MPPI believed its commands would be
+refreshed far more often than they actually were, so it consistently
+either under- or over-shot each planning window. Whenever
+`controller_frequency` changes, `model_dt` changes with it in the same
+edit - both are set from the same `1/controller_frequency` value and
+`time_steps` re-derived to keep the total horizon (`time_steps *
+model_dt`, currently `28 * 0.1 = 2.8`s) at roughly the same real-world
+lookahead distance the passages in this layout call for, rather than
+left at whatever step count happened to be there before.
+
+## Ultrasonic sensors were mounted in the wrong frame: extensionSlot != base_link
+
+`simulation.wbt`'s `TurtleBot3Burger.extensionSlot` is **not** an alias
+for the robot's own origin - it is offset to `(-0.03, 0, 0.153)` in
+`base_link`, which is exactly the LDS-01 lidar's real mount point (that's
+why `RobotisLds01 {}` needs no `translation` field at all: it already
+sits at the slot's origin). The four sonar `DistanceSensor` nodes were
+first written with `translation`s intended as base_link-relative (e.g.
+`0.1 0 0.08` for "10cm out, 8cm up" on the front sensor) - Webots applied
+them slot-relative instead, live-confirmed via
+`ros2 run tf2_ros tf2_echo base_link sonar_front` reporting the frame at
+`(0.070, 0, 0.233)`, not `(0.10, 0, 0.08)`: 3cm too far back and 15cm too
+high. That 0.233m height is the "distance array way above the TurtleBot
+marker" visual reported live, and the 0.070m radial placement put the
+front sensor's own MAX-RANGE return point at only 0.1498m from
+base_link - permanently inside `collision_monitor`'s 0.16m `CollisionSlow`
+ring, which is why the robot drove every goal in a constant 60% slowdown
+that toggled with ordinary sensor noise (58 toggles measured in one
+60-second window off `/rosout`).
+
+Fixed by back-solving each translation as `(desired base_link pose -
+slot origin)`, putting all four sensors at exactly 0.10m from centre,
+z=0.08 (mid-body: above the 0.066m wheel tops, below the 0.153m lidar
+deck) as originally intended. A detailed warning comment is left directly
+above these translations in `simulation.wbt` itself.
+
+Lesson: never assume a PROTO's `extensionSlot` (or any node's declared
+child-attachment point) coincides with that node's own reference frame -
+verify any newly-added device's real TF against `base_link` with
+`tf2_echo` before trusting a translation value, especially when the
+sibling nodes already in that slot (like `RobotisLds01 {}` here) offer a
+visible clue (zero translation on a sensor that is definitely not at the
+robot's centre) that the slot has its own non-trivial offset.
+
+## MPPI sampling noise must be sized as a fraction of THIS robot's velocity limits, not left at Nav2's stock defaults
+
+`vx_std: 0.2` / `wz_std: 0.4` are Nav2's own stock example values, sized
+for the stock example robot's `vx_max: 0.5` / `wz_max: 1.9`. This project
+runs `vx_max: 0.35` (later raised to `0.45`) and a deliberately halved
+`wz_max: 0.6` - against those limits the stock noise values were 57% of
+the linear range and 67% of the angular range, meaning the sampled
+control distribution was close to uniform across the entire commandable
+envelope. Live-observed consequence: with the robot sitting still and a
+goal ahead, `w` oscillated `+0.29 -> -0.33 -> +0.28` in a clean limit
+cycle and peak `vx` never exceeded `0.06` (out of `0.35`) over a full
+60-second goal attempt, with 35 `IN_PLACE_SPIN` telemetry states logged
+in that one window - every batch of rollouts contained roughly as many
+hard-left as hard-right samples, so the cost-weighted average cancelled
+to near zero instead of committing to either.
+
+Reduced to `vx_std: 0.10` (~22% of `vx_max: 0.45`) and `wz_std: 0.15`
+(25% of `wz_max: 0.6`), with `temperature` lowered `0.3 -> 0.2` for a
+sharper (less averaged, more decisive) softmax pick over rollout costs -
+this matters specifically in this layout's passages, where a left-detour
+and a right-detour trajectory can score near-identically and averaging
+them drives straight at the wall between them. Re-run under the same
+conditions: 2 `IN_PLACE_SPIN` states (down from 35) and `STRAIGHT_FORWARD`
+states appearing for the first time in that goal attempt.
+
+Lesson: any critic/sampling-noise value copied from Nav2's own example
+config is scaled for that example's velocity limits, not this robot's -
+check it as a *fraction* of this project's actual `vx_max`/`wz_max`
+(roughly 20-25% is a reasonable working range) rather than trusting the
+literal number.
+
+## PathAlignCritic has a silent kill-switch: max_path_occupancy_ratio
+
+`PathAlignCritic` is not just a weighted cost term - past a threshold it
+stops scoring entirely. It counts what fraction of the global path's
+sampled points currently sit in high-cost/unknown local-costmap cells,
+and once that fraction exceeds `max_path_occupancy_ratio`, the critic
+returns **without scoring anything at all**: MPPI is no longer pulled
+toward the global plan by this critic in that cycle and free-runs on
+whatever its other critics alone produce. This project had it set to
+`0.05` - stricter than Nav2's own `0.07` default - and that threshold
+was tripping inside exactly the passages where staying aligned to the
+global plan matters most: the plan through a 0.324m passage runs about
+0.162m from both walls, and with `inflation_radius` close to
+`robot_radius` only a few cm of ordinary AMCL/odom drift is enough to
+push a run of path points into high-cost cells and cross the ratio. This
+was directly responsible for the "local controller isn't following the
+global path in the passages" behaviour reported live - the critic
+wasn't mis-weighted, it had switched itself off.
+
+Raised to `0.5` (permissive - appropriate for a robot whose whole job is
+threading gaps barely wider than itself) and `PathFollowCritic.cost_weight`
+raised `5.0 -> 8.0` alongside it, so the two path-following critics pull
+together (align = stay on the plan laterally, follow = advance down it)
+rather than PathAlign alone fighting the obstacle-avoidance critics once
+it's allowed to actually run inside a tight passage.
+
+Lesson: a critic's `enabled`/`cost_weight` pair is not always the whole
+story - some critics (confirmed here via `nav2_mppi_controller`'s own
+source) have their own independent activation thresholds that silently
+disable them under specific costmap conditions. Worth checking a
+critic's actual source, not just its declared parameters, when its
+effect seems to vanish under specific conditions (like "only inside
+narrow passages") rather than assuming it's a weighting problem.
+
+## inflation_radius == robot_radius is not a valid tuning value, at any inflation_radius
+
+Setting `inflation_radius` exactly equal to `robot_radius` (both `0.10`
+at one point, on direct request to remove the soft inflation margin
+entirely) is not merely aggressive tuning - it is a logical dead end,
+independent of what the exact number is. `InflationLayer`'s only cost
+transition (from `0` to `253`, `INSCRIBED_INFLATED_OBSTACLE`) then sits
+exactly on the robot's own hull radius. A robot resting flush against a
+wall - which is exactly what "drive straight into the end wall and stop"
+produces, and a legitimate outcome of ordinary approach behaviour - then
+has its own occupied cell sitting precisely on that transition boundary,
+and a few millimetres of completely ordinary AMCL/rf2o pose noise between
+update cycles is enough to flip that cell between reading fully clear and
+fully lethal on every single costmap update. That flicker is the
+"jittery/glitchy inflation" visually reported live in RViz screenshots -
+it is not LIDAR sensor noise to be filtered, it is this exact geometric
+coincidence.
+
+It also defeats every recovery path at once, which is what made the
+robot un-recoverable after getting wedged rather than merely
+slow to escape: `Spin` and `BackUp` are both collision-checked against
+the local costmap (confirmed live via "Collision Ahead - Exiting
+Spin"/"...Exiting BackUp" log lines firing during normal operation
+elsewhere in this project). With zero margin, the robot's own current
+pose reads as already colliding, so both behaviours reject themselves as
+unsafe on their very first attempt - and MPPI, evaluating trajectories
+from that same already-critical starting cost, sees forward, reverse,
+and rotate-in-place candidates all scoring near-equally badly every
+cycle. The result observed live matched this exactly: 20+ seconds of
+`IN_PLACE_SPIN <-> TRANSITIONING <-> IDLE_STATIONARY` cycling with `vx`
+pinned under `0.01`, ending in `Failed to make progress` with no
+recovery behaviour ever visibly succeeding, repeating identically on a
+freshly-issued goal rather than clearing.
+
+Settled on `inflation_radius: 0.12` (2cm of real margin - not the `0.25`
+tried and explicitly rejected as visually too heavy) with
+`cost_scaling_factor` raised `8.0 -> 14.0` so most of that thin 2cm band
+decays to a low, faint cost rather than reading as a strong bright ring -
+keeping the visible halo close to what `0.10` looked like while removing
+the exact-zero-margin flicker. Verified this changes nothing about which
+passages are plannable: connectivity of the traversable region (cells
+with clearance > `robot_radius`, which is what `SmacPlanner2D` actually
+refuses) was checked via a distance-transform on `room_map_hires.pgm`
+and confirmed identical (one connected region, same cell count) at every
+`inflation_radius` value tried in this session (`0.10`, `0.25`, `0.12`) -
+`inflation_radius` only ever shapes a soft cost preference beyond the
+hard inscribed band, never what gets refused outright.
+
+Lesson: "reduce inflation to the minimum" and "set inflation_radius equal
+to robot_radius" are not the same request - the latter removes a
+necessary safety margin around the robot's own hull, not just around
+obstacles, and produces exactly the kind of intermittent, hard-to-explain
+"but it was working a second ago" failure this entry documents. A small
+non-zero margin (a few cm, not the ~15cm previously rejected) combined
+with a steep `cost_scaling_factor` satisfies both "looks thin in RViz"
+and "the robot's own position never sits on a knife-edge" at the same
+time - they are not actually in tension once separated like this.
+
+## Linear speed raised, reverse capped independently
+
+`vx_max: 0.35 -> 0.45` on direct request; `wz_max` (angular) was
+deliberately left untouched at its earlier-halved `0.6` value - the
+request was specifically for linear speed. `vx_min` was set to `-0.25`
+rather than mirrored to `-0.45`: live telemetry during the MPPI-noise
+debugging above showed long stretches of `RECOVER_BACKUP` and negative
+`vx` as MPPI dithered backwards without ever being asked to by an actual
+recovery behaviour; reverse is needed for genuine recovery (`BackUp`'s
+own `backup_speed: 0.025` is unrelated and far smaller) but has no
+reason to be as fast as forward travel, and capping it removes a
+meaningful slice of unproductive backward rollouts from every MPPI
+batch. `velocity_smoother`'s `max_velocity`/`min_velocity`/`max_accel`/
+`max_decel` were all updated to match (`[0.45, 0.0, 0.6]` /
+`[-0.25, 0.0, -0.6]` / `[0.7, 0.0, 0.6]` / `[-0.7, 0.0, -0.6]`) - the
+smoother's envelope must cover MPPI's own limits on both bounds, or it
+silently clips whatever MPPI asks for.
+
+## Open-aisle wall-hugging + un-recoverable narrow-passage deadlock: a computed fix, not another guess
+
+Implemented from `narrow-passage-navigation-fix-brief.md` (project root) -
+a formal brief covering four symptoms: the global planner hugging one wall
+in open aisles instead of the centreline; the robot still getting
+permanently stuck near inflation boundaries inside passages even after the
+earlier 0.12/14.0 fix; generally poor driving quality; and
+`collision_monitor` losing its lifecycle bond heartbeat and taking the
+whole stack down during a recovery-loop storm. Four architecture decisions,
+implemented in full:
+
+**Decision A - inflation is now computed from the real map, not eyeballed.**
+This project had twice picked `(inflation_radius, cost_scaling_factor)` by
+visual inspection alone and gotten burned both times - too small caused the
+zero-margin flicker/deadlock documented above; too large looked visually
+heavy. Neither attempt asked the one question that actually explains the
+wall-hugging symptom: with a thin inflation band, the cost field is flat
+zero across the vast majority of every open aisle, so `SmacPlanner2D` (a
+cost-aware search) degenerates to a near-pure shortest-distance search with
+no reason to stay centred - a documented Nav2 failure mode (Tuning Guide's
+"Inflation Potential Fields" section; tracked upstream as
+navigation2#4542), not something specific to this project.
+
+`amr_navigation/scripts/calibrate_inflation.py` (new) answers this from the
+map itself: distance-transforms `room_map_hires.pgm`, skeletonizes free
+space into the map's own medial axis, splits the skeleton into branches at
+its junctions, and classifies each branch as a PASSAGE (a width local
+minimum between two junctions) or an AISLE (a sustained wide run) - purely
+from geometry, with the layout drawing's known figures (353-460mm) used
+only as an after-the-fact sanity check, not as an input. Two real bugs were
+found and fixed *while building the script itself*, both worth remembering
+for any future skeleton-based map analysis:
+  - A branch's own ENDPOINT pixels sit at junctions (often near a wall
+    corner where several branches meet) and their distance-transform value
+    reflects that corner, not the corridor the branch runs through - an
+    untrimmed pass reported branches down to 50mm wide, contradicting a
+    fact already established elsewhere in this project (the earlier
+    connectivity check showing every cell with clearance > robot_radius
+    forms ONE connected region, meaning no real constriction here can be
+    narrower than ~2x robot_radius = 0.20m). Fixed by trimming a few pixels
+    off each branch end before taking its width minimum, and by requiring
+    both of a branch's endpoints to be true junctions (degree >= 3) rather
+    than a dead-end - a dead-end branch is a skeleton spur toward a convex
+    bump (a round obstacle in this map), not a through-passage, and reads
+    as falsely narrow for an unrelated reason.
+  - A cross-section's perpendicular walk (used to check aisle-centering)
+    was bounded by a large fixed pixel count, which let it wander out of
+    the intended corridor into unrelated open floor space whenever a
+    branch bent or the locally-estimated tangent was imprecise - one
+    walked 1.8m from centre through an adjacent room. Fixed by bounding
+    the walk to roughly 1.8x the point's own distance-transform value
+    (its true distance to the nearest wall) instead of a generic constant.
+
+Script output against this map's real geometry: the widest aisle segments
+reach ~1.15m, requiring `inflation_radius` >= ~0.70m for both walls'
+gradients to meet at the centre (coverage measured climbing
+0%@<=0.35 -> 20%@0.40 -> 53%@0.50 -> 80%@0.60 -> 100%@0.70 as radius
+increased - 0.70 is the smallest radius reaching full coverage, not a
+round number picked by hand). At `cost_scaling_factor: 20.0` (the
+steepest tested), cost decays from 253 at the inscribed edge to under
+6/253 by 30cm out - despite the larger radius NUMBER, the visually
+perceptible band is thinner than the previously-rejected 0.25/8.0 setting
+(which stayed above 75/253 all the way to its own edge). The script's own
+bridge-finding pass (Tarjan's algorithm on the skeleton's junction graph)
+confirmed every real passage in this map (300-364mm; anything below
+2x robot_radius is a wall-thickness/doorframe artifact no route ever
+crosses, and is excluded as irrelevant) is single-entrance - no alternate
+route exists anywhere for the planner to wrongly prefer - so
+`planner_server.GridBased.cost_travel_multiplier` was raised `1.0 -> 1.3`
+safely, and at the chosen inflation setting the narrowest real passage's
+centreline cost is 93.7/253, comfortably short of the 253 cutoff that
+would make `SmacPlanner2D` refuse it.
+
+**Global and local costmaps now deliberately DIVERGE** (previously kept
+identical on purpose - see "Robot stalled completely" entry above for why
+that convention existed): `global_costmap.inflation_layer` gets the full
+computed `inflation_radius: 0.70` / `cost_scaling_factor: 20.0` pair, since
+aisle-centring is what `SmacPlanner2D` (which reads only the global
+costmap) needs to fix. `local_costmap.inflation_layer` stays at a much
+smaller `inflation_radius: 0.25` (same `cost_scaling_factor: 20.0`) for two
+reasons: MPPI doesn't need its own large potential field to know where to
+drive, since `PathAlignCritic`/`PathFollowCritic` already pull it onto the
+path the global planner decided; and `InflationLayer`'s own per-obstacle
+work scales with the SQUARE of the inflation-radius-in-cells, so blindly
+copying 0.70 to the local costmap would have been roughly a 6x per-cycle
+compute increase on the exact single-threaded executor already
+diagnosed as this project's real bottleneck once before (see "Control
+loop's real rate ceiling" entry). Confirmed this divergence doesn't
+reintroduce the local/global disagreement `PathAlignCritic`'s
+`max_path_occupancy_ratio` fix addressed: with the same scaling factor and
+the same 253 inscribed core, local's smaller cutoff means its cost at any
+given distance is always <= global's cost there (it just reaches zero
+sooner) - local can never rate a point MORE forbidding than global already
+did.
+
+**Decision B - recovery behaviours now check a genuinely different,
+less-paranoid costmap.** `Spin`/`BackUp`/`DriveOnHeading` were, until now,
+collision-checked via `CostmapTopicCollisionChecker` against
+`local_costmap/costmap_raw` - the SAME padded field MPPI/normal tracking
+just failed against. When the robot's own pose reads as high-cost there
+(the exact scenario in the "un-recoverable spin" deadlock, and in the
+newer "flush against a wall" deadlock both documented above), every
+recovery behaviour inherits that same poisoned reading and rejects itself
+as unsafe on its first attempt too - there was no independent fallback
+surface to actually recover onto. Confirmed real, configurable parameters
+exist for this (`strings` on `libbehavior_server_core.so`:
+`costmap_topic`/`footprint_topic`, defaulting to
+`local_costmap/costmap_raw`/`local_costmap/published_footprint`) and a
+real standalone costmap executable exists to point them at
+(`ros2 pkg executables nav2_costmap_2d` lists `nav2_costmap_2d` itself - a
+thin lifecycle-node wrapper around `Costmap2DROS` built for exactly this).
+
+Stood up `recovery_costmap` as a new, separate lifecycle node
+(`navigation.launch.py`, added to `lifecycle_manager_navigation`'s
+`node_names`) with its own minimal costmap config (`obstacle_layer` +
+`inflation_layer` only, no `static_layer`/`range_layer`, same rationale as
+`local_costmap`), reusing this project's own already-vetted
+`inflation_radius: 0.12` / `cost_scaling_factor: 14.0` pair (the value
+`local_costmap` itself ran on safely before Decision A moved it to 0.25) -
+deliberately NOT equal to `robot_radius`, since that exact equality is
+what caused the original flicker/deadlock this whole change is meant to
+route around. `behavior_server.costmap_topic`/`footprint_topic` now point
+at `recovery_costmap/costmap_raw`/`recovery_costmap/published_footprint`
+instead of the defaults. Left `simulate_ahead_time` at its existing `1.0`
+rather than reverting it further - the brief's own concern (a longer
+ahead-check window making self-rejection MORE likely) applied when this
+window was checked against the same padded field recovery just failed
+against; against `recovery_costmap`'s much-less-padded field there is
+meaningfully more room before a cell reads as lethal - but this
+interaction is flagged as something to watch during live verification, not
+asserted as fully resolved by reasoning alone.
+
+**Decision C - `collision_monitor`'s `CollisionSlow` no longer fires for
+merely being inside a passage.** At the old `radius: 0.16`, this zone was
+- by its own prior comment - active essentially 100% of the time inside
+every passage in this layout, compounding continuously with MPPI's own
+graduated caution (`CostCritic`/`ConstraintCritic`) reading the exact same
+costmap the global plan was routed through. Two independent caution layers
+stacking at 100% duty cycle in the same space is redundant, not additive
+safety, and had already needed one compensating fix this project
+(`slowdown_ratio` 0.3 -> 0.6) when the compounded cut collapsed velocity
+below `controller_server.min_x_velocity_threshold`. Shrunk to `radius:
+0.13`, computed (not eyeballed) from `calibrate_inflation.py`'s own
+passage detection: the narrowest genuine passage in this map is 300mm
+(150mm centre-to-wall at perfect centring), so 0.13 sits 2cm below that -
+`CollisionSlow` no longer fires for nominally-tight-but-well-centred
+passage transit, only for a genuinely closer-than-expected reading (drift,
+an actual obstacle) in either a passage or the open aisles - while staying
+1.5cm above `CollisionStop`'s untouched `0.115` last-resort ring.
+
+**Decision D - hardening independent of whether A-C fully eliminate the
+deadlock.** `maneuver_telemetry_node.py` already only logged on state
+change, but a recovery-loop storm thrashes `classify()` between states
+almost every `/cmd_vel_raw` message - exactly the scenario this brief
+exists to fix - turning that into a near-every-cycle flood; added a 0.3s
+minimum interval between log lines (state is still reported, just not
+faster than that). Confirmed, via `strings` on the correct library
+(`libnav2_lifecycle_manager_core.so` - not the same-sounding
+`liblifecycle_manager_app.so`, which doesn't exist on this build), the
+answer to what happens after a bond failure: `attempt_respawn_reconnection`
+is a real parameter and WITHOUT it a bond failure is unrecoverable by
+design (the library's own log strings are literally "CRITICAL FAILURE...
+Shutting down related nodes" with no automatic bring-up path) - nav2
+stayed down until manually relaunched. Enabled `attempt_respawn_reconnection:
+true` with `bond_respawn_max_duration: 10.0` in `lifecycle_manager_navigation`'s
+params, so a server that recovers within 10s is picked back up
+automatically ("Successfully re-established connections from server
+respawns, starting back up") instead of requiring a manual relaunch.
+`bond_timeout` left at Nav2's own 4.0s default deliberately - the real
+fix for the underlying trigger is Decisions A-C not letting the
+executor-starvation storm happen at all; this is the safety net for if it
+ever does anyway. Confirmed (same `strings` method) neither
+`controller_server` nor `collision_monitor` has a configurable
+multi-threaded executor on this Humble build - `collision_monitor` already
+runs as its own OS process (not sharing `controller_server`'s executor),
+so the only remaining lever for genuine CPU starvation would be an
+OS-level scheduling priority change, which was deliberately NOT applied
+without being asked (a system-level change beyond a config/code edit,
+with its own side-effect risk) - noted here as the next thing to reach for
+if `top`/`htop` during a live deadlock shows genuine CPU contention rather
+than the single-executor starvation pattern already fixed.
+
+**Verification status, honestly:** every number above was computed from
+the real map and validated by re-deriving it two different ways where a
+first pass looked suspicious (the branch-width and cross-section bugs
+above were both caught this way, not assumed correct on the first run),
+and the full config was checked for internal consistency (YAML parses,
+`recovery_costmap` block present, `behavior_server` points at it,
+`model_dt == 1/controller_frequency` still holds). What has NOT yet
+happened is a live run against the actual simulation - this session had no
+`ros2 node list` access at implementation time (checked, empty, more than
+once) - so the brief's own acceptance criteria (a goal into a narrow-room
+target completing without `RECOVER_BACKUP`/`IN_PLACE_SPIN` more than once
+or twice transiently across 5 repeated attempts; `collision_monitor`'s
+bond heartbeat never lapsing during a deliberately provoked deadlock) are
+implemented against but not yet confirmed live. Treat this exactly like
+the project's own prior "single successful run isn't sufficient
+confirmation" standard - a fresh multi-attempt test is the natural next
+step, not an afterthought.
+
+## The standalone nav2_costmap_2d executable cannot be renamed - live-confirmed the hard way
+
+The recovery_costmap node above was first launched with
+`name='recovery_costmap'` in `navigation.launch.py`, matched by a
+`recovery_costmap: recovery_costmap: ros__parameters:` block in
+`nav2_params.yaml` and a bare `'recovery_costmap'` entry in
+`lifecycle_manager_navigation`'s `node_names` - a reasonable-looking setup
+that hung the ENTIRE navigation bringup forever on first real launch:
+`lifecycle_manager` logged `Waiting for service
+recovery_costmap/get_state...` on a 2-second retry loop indefinitely, and
+because it brings nodes up in `node_names` order and won't proceed past
+one it can't reach, everything listed after it (`behavior_server`,
+`bt_navigator`, `velocity_smoother`, `collision_monitor`) never came up
+either - a single wrong name took down the whole stack, not just the one
+new node.
+
+Root-caused live, with actual ROS graph access (`ros2 node list`) rather
+than reasoning about it in the abstract: the node was really running, but
+had registered itself as `/costmap/costmap`, not `/recovery_costmap`. This
+was confirmed to be an unconditional, non-overridable limitation of the
+`nav2_costmap_2d` executable itself, not a mistake in this project's
+launch arguments - tested directly with
+`ros2 run nav2_costmap_2d nav2_costmap_2d --ros-args -r
+__ns:=/recovery_costmap` (a completely separate, ad-hoc process, not this
+project's own launch file), and it STILL reported as `/costmap/costmap` in
+`ros2 node list`. Both a launch-level `name=` override and a ROS
+`--ros-args -r __ns:=` namespace remap were tried and both were silently
+ignored - `Costmap2DROS`'s internal construction for this executable
+hardcodes its own name AND uses that same string as its own namespace
+(explaining why every reference to it - including the embedded
+`local_costmap`/`global_costmap` elsewhere in this same file - shows the
+same doubled `<name>/<name>` pattern: that doubling is `Costmap2DROS`'s
+own universal self-namespacing convention, not something specific to the
+standalone executable).
+
+Fixed by giving up on renaming it and wiring everything else to the real,
+confirmed identity instead: `nav2_params.yaml`'s block became `costmap:
+costmap: ros__parameters:`, `behavior_server.costmap_topic`/
+`footprint_topic` became `costmap/costmap/costmap_raw`/
+`costmap/costmap/published_footprint`, and `lifecycle_manager_navigation`'s
+`node_names` entry became `costmap/costmap`. The launch file's
+`name='recovery_costmap'` was left in place as a cosmetic label only (it
+does appear in `ros2 node list`-adjacent tooling and log lines, just not
+in the node's REAL reported identity or its topics/services) with a
+comment explaining it's cosmetic, so a future reader doesn't assume it
+controls anything functional.
+
+Lesson: for a node type this project has never launched standalone before
+(as opposed to `local_costmap`/`global_costmap`, always embedded here),
+verify its real reported identity live (`ros2 node list`, `ros2 node
+info`) BEFORE wiring three other files against an assumed name - a launch
+`name=` field and a `--ros-args` remap are not guaranteed to control a
+node's actual identity, particularly for a thin standalone wrapper around
+a class (`Costmap2DROS`) that does its own internal node construction
+rather than relying on the ROS launch system's usual name-resolution path.
+
+## Two more live-diagnosed bugs in the same feature, then the computed inflation value was reverted by request
+
+Two real, separate bugs surfaced on the first actual relaunch after the
+above naming fix, both caught with genuine live `ros2 lifecycle`/`ros2
+node` introspection rather than assumed fixed:
+
+1. **`bond_timeout` (4.0s, Nav2's stock default) was too tight for THIS
+   bringup specifically.** `costmap/costmap` genuinely reached `active`
+   (confirmed via `ros2 lifecycle get /costmap/costmap` immediately after
+   the failure) - its bond simply wasn't detected inside the 4.0s window
+   lifecycle_manager waited before giving up ("Server costmap/costmap was
+   unable to be reached after 4.00s by bond"), most likely because this
+   added a FIFTH lifecycle node on top of an already-running Webots + RViz
+   + full stack bringup, and the extra contention pushed its first bond
+   handshake past the window. Because lifecycle_manager aborts the ENTIRE
+   bringup the instant one node in `node_names` is late - not just that
+   one node - everything listed after it (`behavior_server`,
+   `bt_navigator`, `velocity_smoother`, `collision_monitor`) was left
+   stuck `inactive` even though nothing was actually wrong with any of
+   them (confirmed via `ros2 lifecycle get` on each). Raised to `8.0s` -
+   a bringup-time contention issue is a different thing from the
+   steady-state heartbeat-loss scenario this same parameter also governs
+   (a genuine executor-starvation storm, which Decisions A-C address,
+   produces gaps measured in many seconds to indefinite, not a difference
+   of ~1s), so this doesn't materially weaken the runtime safety net.
+
+2. **The computed `inflation_radius: 0.70` / `cost_scaling_factor: 20.0`
+   pair, while functionally verified (100% aisle-gradient coverage, no
+   passage newly blocked, confirmed via calibrate_inflation.py), was
+   rejected on sight in RViz before a live navigation test could show
+   whether the trade-off was worth it.** Shown the concrete trade-off
+   directly (the wall-hugging symptom this whole brief exists to fix is
+   expected to return at a smaller radius, per the Nav2 Tuning Guide's own
+   documented failure mode) and asked explicitly rather than guessed at
+   again - the answer was to revert anyway, accepting that consequence.
+   Reverted global_costmap AND local_costmap to `0.12`/`14.0` (matching
+   each other again, restoring this file's original global/local-identical
+   convention that Decision A had deliberately broken) and
+   `costmap`/`costmap` (the recovery costmap) already ran that exact pair.
+   `cost_travel_multiplier` was NOT reverted (stayed at `1.3`) - its own
+   justification (every real passage in this map is single-entrance, so a
+   higher multiplier can't cause detour-seeking) doesn't depend on the
+   inflation radius value at all.
+
+The computed 0.70/20.0 pair is not lost - it's documented in the
+"Open-aisle wall-hugging..." entry above, along with the full derivation,
+in case the wall-hugging behaviour is confirmed to return and revisiting
+it (or a value between the two, re-run through the calibration script
+with a different acceptance threshold) becomes worth it. This is a
+recorded, deliberate trade-off, not an unresolved bug - don't re-raise
+inflation size as an open problem without first checking whether this
+entry already covers the exact trade-off in question.
+
+## Final inflation tuning state: global 0.15/10.0, local 0.11/25.0
+
+**Current asymmetric configuration** (Sep 2026): global_costmap inflation
+`0.15m` radius / `10.0` scaling, local_costmap `0.11m` / `25.0`. Both soft
+cost only — the hard inscribed core blocking navigation is `robot_radius:
+0.10`, unchanged. Global band is 5cm beyond inscribed (2 grid cells on
+0.025m), rendering as a thin line instead of the large soft halo seen at
+0.30+. Local band is 1cm (1-2 cells on 0.05m) — at its floor before
+triggering grid-indistinguishable-from-equal flicker again.
+
+Trade-off: with a 5cm band, SmacPlanner2D has no centering gradient in
+aisles wider than ~600mm and degenerates to shortest-distance search,
+expected to cause wall-hugging in the widest open areas again. Known
+documented failure mode. Re-raises inflation toward 0.30+ or 0.55+ if
+hugging returns and matters; the full history and reasoning above covers
+the decision space completely.
+
+The soft-cost band is a visualization/tuning parameter only. It has never
+blocked the robot — it cannot make the robot fit where it didn't before.
+What blocks is the hard inscribed radius (robot_radius: 0.10). Reducing
+soft cost only makes the RViz display lighter, not the robot smaller.
+
+Current MPPI tuning (temperature: 0.35, vx_std: 0.10, wz_std: 0.15) and
+planner cost_travel_multiplier: 1.5 are the levers for passage-entry
+behavior, not inflation_radius itself.

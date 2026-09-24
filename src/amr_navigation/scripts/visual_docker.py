@@ -41,8 +41,10 @@ class VisualDocker(Node):
         self.create_subscription(PoseStamped, '/docking/tag_pose', self._tag_pose_callback, 10)
         self.create_subscription(Bool, '/docking/activate', self._activate_callback, 10)
         
-        # Support both the active drive controller's topic and standard cmd_vel
-        self._twist_pub = self.create_publisher(Twist, '/diff_drive_controller/cmd_vel_unstamped', 10)
+        # amr_simulation/launch/sim.launch.py's WebotsController driver
+        # already remaps diffdrive_controller's real input topic to plain
+        # /cmd_vel.
+        self._twist_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self._cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         
         # Unified Control and Watchdog Loop (20 Hz)
